@@ -9,3 +9,9 @@ summary(performance_train)
 summary(transactions_train)
 summary(payments_train)
 summary(billing_train)
+
+
+payments_train %>%
+  group_by(ID_CPTE) %>%
+  summarize(mean_payment = mean(TRANSACTION_AMT),
+            number_payments = n())
