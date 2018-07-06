@@ -1,17 +1,7 @@
 library(dplyr)  
-library(caret)
-library(gbm)
-library(randomForest)
-library(doParallel)
-library(nnet)
-library(MASS)
-library(olsrr)
-library(plyr)
-library(pROC)
 library(plotly)
-library(dplyr)
 library(corrplot)
-library(cvTools)
+
 
 path = "C:\\Users\\Tony\\OneDrive\\Actuary\\Data Science\\DataCup"
 
@@ -33,9 +23,12 @@ payments_train_grouped = payments_train %>%
             max_payment = max(TRANSACTION_AMT),
             min_payment = min(TRANSACTION_AMT),
             median_payment = median(TRANSACTION_AMT),
-            reversedPayment = sum(PAYMENT_REVERSAL_XFLG == "N"),
-            noPayments = sum(PAYMENT_REVERSAL_XFLG == ""))
+            reversedPayment = sum(PAYMENT_REVERSAL_XFLG == "N")>=1,
+            noPayments = sum(PAYMENT_REVERSAL_XFLG == "")>=1)
+
+payments_train_grouped[is.na(payments_train_grouped)] <- 0
 
 
 fullDf = merge(payments_train_grouped,performance_train, by = "ID_CPTE") 
+
 
