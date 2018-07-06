@@ -11,7 +11,13 @@ summary(payments_train)
 summary(billing_train)
 
 
-payments_train %>%
+payments_train_grouped = payments_train %>%
   group_by(ID_CPTE) %>%
   summarize(mean_payment = mean(TRANSACTION_AMT),
-            number_payments = n())
+            number_payments = n(),
+            max_payment = max(TRANSACTION_AMT),
+            min_payment = min(TRANSACTION_AMT),
+            median_payment = median(TRANSACTION_AMT),
+            reversedPayment = sum(PAYMENT_REVERSAL_XFLG == "N"),
+            noPayments = sum(PAYMENT_REVERSAL_XFLG == ""))
+
