@@ -1,3 +1,18 @@
+library(dplyr)  
+library(caret)
+library(gbm)
+library(randomForest)
+library(doParallel)
+library(nnet)
+library(MASS)
+library(olsrr)
+library(plyr)
+library(pROC)
+library(plotly)
+library(dplyr)
+library(corrplot)
+library(cvTools)
+
 path = "C:\\Users\\Tony\\OneDrive\\Actuary\\Data Science\\DataCup"
 
 transactions_train = read.csv(paste0(path,"\\transactions_train.csv"))
@@ -20,4 +35,7 @@ payments_train_grouped = payments_train %>%
             median_payment = median(TRANSACTION_AMT),
             reversedPayment = sum(PAYMENT_REVERSAL_XFLG == "N"),
             noPayments = sum(PAYMENT_REVERSAL_XFLG == ""))
+
+
+fullDf = merge(payments_train_grouped,performance_train, by = "ID_CPTE") 
 
