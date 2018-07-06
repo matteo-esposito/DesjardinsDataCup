@@ -28,6 +28,16 @@ payments_train_grouped = payments_train %>%
 
 payments_train_grouped[is.na(payments_train_grouped)] <- 0
 
+payments_billing_grouped = payments_billing %>%
+  group_by(ID_CPTE) %>%
+  summarize()
+
+payments_transactions_grouped = payments_transactions %>%
+  group_by(ID_CPTE) %>%
+  summarize()
+
+
+
 
 train = merge(payments_train_grouped,performance_train, by = "ID_CPTE") 
 
