@@ -6,3 +6,6 @@ performance_train = read.csv(paste0(path,"\\performance_train.csv"))
 billing_train = read.csv(paste0(path,"\\facturation_train.csv"))
 
 summary(performance_train)
+summary(transactions_train)
+summary(payments_train)
+summary(billing_train)
