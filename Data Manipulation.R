@@ -28,13 +28,23 @@ payments_train_grouped = payments_train %>%
 
 payments_train_grouped[is.na(payments_train_grouped)] <- 0
 
-payments_billing_grouped = payments_billing %>%
+billing_train_grouped = billing_train %>%
   group_by(ID_CPTE) %>%
-  summarize()
+  summarize(
+    mean_balance = mean(CurrentTotalBalance),
+    mean_cash_balance = mean(CashBalance),
+    max_balance = max(CurrentTotalBalance),
+    max_cash_balance = max(CashBalance),
+    # mostRecentStatement = max(StatementDate), 
+    # mostRecentBalance = CurrentTotalBalance[which.max(StatementDate)],
+    delq = sum(DelqCycle)>=1
+  )
 
-payments_transactions_grouped = payments_transactions %>%
+transactions_train_grouped = payments_transactions %>%
   group_by(ID_CPTE) %>%
-  summarize()
+  summarize(
+    number_transactions = n()
+  )
 
 
 
