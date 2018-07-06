@@ -29,6 +29,6 @@ payments_train_grouped = payments_train %>%
 payments_train_grouped[is.na(payments_train_grouped)] <- 0
 
 
-fullDf = merge(payments_train_grouped,performance_train, by = "ID_CPTE") 
+train = merge(payments_train_grouped,performance_train, by = "ID_CPTE") 
 
 
