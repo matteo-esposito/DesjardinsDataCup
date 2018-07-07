@@ -3,7 +3,10 @@
 
 ## Case:  75780289, 59776762
 
-## Facturation >>
+#################
+## Facturation ##
+#################
+
 OverLimitIndicator = (CurrentTotalBalance > CreditLimit)
 TotalBalanceOL = (CurrentTotalBalance/CreditLimit)
 CashBalanceIndictor = CashBalance > 0
@@ -30,4 +33,50 @@ ConsMPSign <- if (NumConsecutiveMissedPayments[i] > NumConsecutiveMissedPayments
 } else {
   sign = 0
 }
+
+##################
+## Transactions ##
+##################
+
+IsLocal = (MERCHANT_COUNTRY_XCD = "DP")
+
+# TravellerIndicator = count(MERCHANT_COUNTRY_XCD = "DP") by ID over 
+# Percentage of each level for all categorical variables by ID
+
+
+#####################
+## Facturation/PMT ##
+#####################
+
+# Link (SAS-style) the payments to the currenttotalbalance and observe whether 
+# or not there is any remaining balance in the future months.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
