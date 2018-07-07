@@ -33,12 +33,35 @@ sampSol <- as.data.table(read.csv("~/Github/DesjardinsDataCup/Data/sample_soluti
 # 1. Preprocessing                                       
 # ______________________________________________________ 
 #                                                        
-#   - NA/bad formatting checks                           
+#   - NA/bad formatting checks & replacements                           
 #   - Feature engineering
 #   - Table merges
 #--------------------------------------------------------#
 
+# Inspect data
 
+## NA counter and row finder function
+NAcount <- function(df){
+  print(sum(is.na(df)))
+  
+  if (sum(is.na(df)) != 0){
+    print(noquote("The rows containing NA's are:"))
+    which(is.na(df))
+  }
+}
+
+NAcount(facturation_train)
+NAcount(paiements_train)
+NAcount(performance_train)
+NAcount(transactions_train)
+
+# Impute with mean by group (ID)
+
+paiements_train <- paiements_train %>% 
+                    group_by(ID_CPTE) %>% 
+                    mutate(TRANSACTION_AMT= ifelse(is.na(TRANSACTION_AMT), mean(TRANSACTION_AMT, na.rm=TRUE), TRANSACTION_AMT))
+
+sum(is.na(paiements_train$TRANSACTION_AMT)) # 0
 
 #--------------------------------------------------------#
 # 2. Variable Selection                                  #
