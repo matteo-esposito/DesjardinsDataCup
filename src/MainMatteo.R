@@ -14,7 +14,7 @@
 setwd("~/Github/DesjardinsDataCup")
 
 ## Package loading
-packages <- c("data.table", "rpart", "caret", "gbm", "mgcv", "ggplot2", "dplyr","Hmisc", "xgboost", "corrplot")
+packages <- c("data.table", "rpart", "caret", "gbm", "mgcv", "ggplot2", "plyr", "dplyr", "Hmisc", "xgboost", "corrplot")
 sapply(packages, require, character.only = T)
 
 ## Load data
@@ -40,14 +40,9 @@ sampSol <- as.data.table(read.csv("~/Github/DesjardinsDataCup/Data/sample_soluti
 
 # Inspect data
 
-## NA counter and row finder function
+## NA counter function
 NAcount <- function(df){
-  print(sum(is.na(df)))
-  
-  if (sum(is.na(df)) != 0){
-    print(noquote("The rows containing NA's are:"))
-    which(is.na(df))
-  }
+  sapply(df,function(x) table(is.na(x)))
 }
 
 NAcount(facturation_train)
@@ -55,22 +50,50 @@ NAcount(paiements_train)
 NAcount(performance_train)
 NAcount(transactions_train)
 
+## Naive imputation right now, since group avg substitution not working
+paiements_train$TRANSACTION_AMT <- ifelse(is.na(paiements_train$TRANSACTION_AMT), mean(paiements_train$TRANSACTION_AMT, na.rm=T), paiements_train$TRANSACTION_AMT)
+sum(is.na(paiements_train$TRANSACTION_AMT)) 
+
 # Impute with mean by group (ID)
-
-paiements_train <- paiements_train %>% 
-                    group_by(ID_CPTE) %>% 
-                    mutate(TRANSACTION_AMT= ifelse(is.na(TRANSACTION_AMT), mean(TRANSACTION_AMT, na.rm=TRUE), TRANSACTION_AMT))
-
-sum(is.na(paiements_train$TRANSACTION_AMT)) # 0
+#paiements_train_2 <- paiements_train %>% 
+#                    group_by(ID_CPTE) %>% 
+#                    mutate(TRANSACTION_AMT= ifelse(is.na(TRANSACTION_AMT), mean(TRANSACTION_AMT, na.rm=TRUE), TRANSACTION_AMT))
 
 #--------------------------------------------------------#
-# 2. Variable Selection                                  #
+# 2. Data Exploration                                    #
 # ______________________________________________________ #
 #                                                        #
 #   - detail 1                                           #
 #   - detail 2                                           #
 #--------------------------------------------------------#
 
+## Thanks Tony ;)
+payments_train_grouped = paiements_train %>%
+  group_by(ID_CPTE) %>%
+  summarize(mean_payment = mean(TRANSACTION_AMT),
+            #number_payments = n(),
+            max_payment = max(TRANSACTION_AMT),
+            min_payment = min(TRANSACTION_AMT),
+            median_payment = median(TRANSACTION_AMT),
+            reversedPayment = sum(PAYMENT_REVERSAL_XFLG == "N")>=1,
+            noPayments = sum(PAYMENT_REVERSAL_XFLG == "")>=1)
+
+payments_train_grouped[is.na(payments_train_grouped)] <- 0
+
+billing_train_grouped = facturation_train %>%
+  group_by(ID_CPTE) %>%
+  summarize(
+    mean_balance = mean(CurrentTotalBalance),
+    mean_cash_balance = mean(CashBalance),
+    max_balance = max(CurrentTotalBalance),
+    max_cash_balance = max(CashBalance)
+  )
+
+transactions_train_grouped = transactions_train %>%
+  group_by(ID_CPTE) %>%
+  summarize(
+    number_transactions = n()
+  )
 
 #--------------------------------------------------------#
 # 3. Modeling                                            #
