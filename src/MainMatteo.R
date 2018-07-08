@@ -187,6 +187,12 @@ transactions_test_grouped = transactions_test %>%
     traveller_ind = ifelse(number_transactions != sum(isLocal),1,0)
   )
 
+## Observe the number of occurrences of each pairing (modify variables if you want to try some combinations out yourself)
+dt_inspection <- transactions_train[,.SD,.SDcols=c("ID_CPTE","TRANSACTION_CATEGORY_XCD", "TRANSACTION_TYPE_XCD")]
+dt_pair_count <- merge(dt_inspection, train, by = "ID_CPTE", all.x = TRUE)
+dt_pair_count$pair_count <- 1
+aggregate(pair_count ~ TRANSACTION_CATEGORY_XCD+TRANSACTION_TYPE_XCD+Default,dt_pair_count, FUN = sum)
+
 ##====================================
 ## Payment features
 ##====================================
