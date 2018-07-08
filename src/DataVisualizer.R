@@ -21,7 +21,7 @@ ui <-
     skin = "green",
     
     
-    #Adds a td logo to the top
+    #Adds a  logo to the top
     dashboardHeader(title = div(
       img(src = "Logo.jpg", style = "position:absolute;left:10px;top:7px;height:40px;width:40px"),
       "Model Graphs"
@@ -220,7 +220,7 @@ server <- shinyServer(function(input, output) {
                  totExp <- sum(srtData$Exposure)
                  #Finding total exposures
                  
-                 #Will give 2 new columns with cumulative exposure and cumulative closing. 
+                 #Will give 2 new columns with cumulative exposure and cumulative default. 
                  #These are ordered by model 1 prediction so these x y will provide for lorenz curve
                  srtData$cloSum1 = cumsum(srtData[, input$obs]) / totObs
                  srtData$expSum1  = cumsum(srtData$Exposure) / totExp
@@ -235,7 +235,7 @@ server <- shinyServer(function(input, output) {
                  
                  srtData$cloSum2 = cumsum(srtData[, input$obs]) / totObs
                  srtData$expSum2  = cumsum(srtData$Exposure) / totExp
-                 #Will give 2 new columns with cumulative exposure and cumulative closing. 
+                 #Will give 2 new columns with cumulative exposure and cumulative default. 
                  #These are ordered by model 2 prediction so these x y will provide for lorenz curve
                  DATAS$srtData <<- srtData
                }))
@@ -316,9 +316,9 @@ server <- shinyServer(function(input, output) {
                        # Numbers are still cut off but is better
                        margin = list( b = 125),
                        barmode  =  "stack",
-                       yaxis = list(title = "Closing"),
+                       yaxis = list(title = "default"),
                        xaxis = list(title = ""),
-                       title = paste(input$var, "Closing Graphs", sep  =  " "),
+                       title = paste(input$var, "default Graphs", sep  =  " "),
                        yaxis2 = list(
                          title = "Exposure",
                          side  =  "right",
@@ -363,8 +363,8 @@ server <- shinyServer(function(input, output) {
                        margin = list(b = 125),
                        barmode  =  "stack",
                        xaxis = list(title = ""),
-                       yaxis = list(title = "Closing"),
-                       title = paste(input$var, "Closing Graphs", sep  =  " "),
+                       yaxis = list(title = "default"),
+                       title = paste(input$var, "default Graphs", sep  =  " "),
                        yaxis2 = list(
                          title = "Exposure",
                          side  =  "right",
@@ -424,7 +424,7 @@ server <- shinyServer(function(input, output) {
                      margin = list( b = 125),
                      xaxis = list(title = "SortRatio"),
                      yaxis = list(title = "Model/Observed"),
-                     title = "Double Lift Closing"
+                     title = "Double Lift default"
                    )
                }))
   
@@ -448,7 +448,7 @@ server <- shinyServer(function(input, output) {
                    ) %>%
                    layout(
                      xaxis = list(title = "% of Exposures"),
-                     yaxis = list(title = "% of Closing"),
+                     yaxis = list(title = "% of default"),
                      title = "Lorenz Curve"
                    )
                  
@@ -559,5 +559,3 @@ shinyApp(
   options = list("launch.browser" = T)
 )
 
-
-write.csv(train, file = "/Users/Matteo/Desktop/tony.csv")
