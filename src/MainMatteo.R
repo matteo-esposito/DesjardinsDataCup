@@ -1,6 +1,7 @@
 
 # Desjardins Lab DataCup
 # June/July 2018
+# Matteo Esposito, Haiqi Liang, Fred Siino, Tony Yuan (alphabetical bros)
 
 #--------------------------------------------------------#
 # 0. Preliminary                                         #
@@ -60,7 +61,10 @@ sum(is.na(payments_train$TRANSACTION_AMT))
 #                    group_by(ID_CPTE) %>% 
 #                    mutate(TRANSACTION_AMT= ifelse(is.na(TRANSACTION_AMT), mean(TRANSACTION_AMT, na.rm=TRUE), TRANSACTION_AMT))
 
+##====================================
 ## Billing features (OL = Over limit)
+##====================================
+
 ## Perc/Ind multicollinearity??
 billing_train$TotalBalanceOL_perc = billing_train$CurrentTotalBalance/billing_train$CreditLimit
 billing_train$TotalBalanceOL_ind = as.numeric(billing_train$CurrentTotalBalance > billing_train$CreditLimit)
@@ -77,7 +81,7 @@ billing_train$SpendingOL_ind = as.numeric(billing_train$Spending > billing_train
 billing_train$Num_CMP = billing_train$DelqCycle
 
 ## New table to store summaritive variables (useful for modeling in the future)
-billing_train_grouped <- setNames(data.table(matrix(nrow = 11900, ncol = 1)), c("ID_CPTE"))
+billing_train_grouped <- setNames(data.table(matrix(nrow = uniqueN(billing_train$ID_CPTE), ncol = 1)), c("ID_CPTE"))
 billing_train_grouped$ID_CPTE = unique(billing_train$ID_CPTE)
 
 billing_train$DelqCycle_ind <- ifelse(billing_train$DelqCycle != 0, 1, 0)
@@ -93,11 +97,53 @@ billing_train_grouped = billing_train %>%
     count_num_cmp = sum(DelqCycle_ind)
   )
 
+##====================================
 ## Transaction features
+##====================================
+
 transactions_train$isLocal = as.numeric(transactions_train$MERCHANT_COUNTRY_XCD == "DP")
 
+transactions_train_grouped <- setNames(data.table(matrix(nrow = uniqueN(transactions_train$ID_CPTE), ncol = 1)), c("ID_CPTE"))
+transactions_train_grouped$ID_CPTE = unique(transactions_train$ID_CPTE)
+
+transactions_train_grouped = transactions_train %>%
+  group_by(ID_CPTE) %>%
+  summarise(
+    number_transactions = n(), 
+    traveller_ind = ifelse(number_transactions != sum(isLocal),1,0)
+  )
 
 
+##====================================
+## Payment features
+##====================================
+
+payments_train_grouped <- setNames(data.table(matrix(nrow = uniqueN(payments_train$ID_CPTE), ncol = 1)), c("ID_CPTE"))
+payments_train_grouped$ID_CPTE = unique(payments_train$ID_CPTE)
+
+payments_train_grouped = payments_train %>%
+  group_by(ID_CPTE) %>%
+  summarise(mean_payment = mean(TRANSACTION_AMT),
+            number_payments = n(),
+            max_payment = max(TRANSACTION_AMT),
+            min_payment = min(TRANSACTION_AMT),
+            median_payment = median(TRANSACTION_AMT),
+            reversedPayment = sum(PAYMENT_REVERSAL_XFLG == "N")>=1,
+            noPayments = sum(PAYMENT_REVERSAL_XFLG == "")>=1)
+
+payments_train_grouped[is.na(payments_train_grouped)] <- 0
+
+##====================================
+## Summary table (For models)
+##====================================
+
+## Fix dimensionality issue (uniqueN(table$ID_CPTE)) >:(
+
+temp1 = merge(payments_train_grouped,transactions_train_grouped, by = "ID_CPTE") 
+temp2 = merge(temp1,billing_train_grouped, by = "ID_CPTE") 
+
+train = merge(temp2, performance_train, by = "ID_CPTE")
+rm(temp1,temp2)
 
 #--------------------------------------------------------#
 # 2. Modeling                                            

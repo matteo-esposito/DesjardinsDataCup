@@ -28,6 +28,7 @@ CreditLimitSign = if (CreditLimit[i] > CreditLimit[i-1]) {
 Num_CMP <- DelqCycle # basic descriptive statistics (max, count)
 Max_Num_CMP <- billing_train[ , max(DelqCycle), by = ID_CPTE]
 Count_Num_CMP <- billing_trin[, count(DelqCycle), by = I_CPTE]
+
 ConsMPSign <- if (NumConsecutiveMissedPayments[i] > NumConsecutiveMissedPayments[i-1]) {
   sign = 1
 } else if (NumConsecutiveMissedPayments[i] < NumConsecutiveMissedPayments[i-1]) {
