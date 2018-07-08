@@ -20,13 +20,13 @@ packages <- c("data.table", "rpart", "caret", "gbm", "mgcv", "ggplot2", "dplyr",
 sapply(packages, require, character.only = T)
 
 ## Load data
-billing_train <- as.data.table(read.csv(paste0(getwd(),"/Data/facturation_train.csv")))
+billing_train <- as.data.table(read.csv(paste0(getwd(),"/Data/facturation_train.csv"))) # SUMMARY/eSTATEMENT OF WHAT YOU OWE ON CREDIT CARD by MONTH
 billing_test <- as.data.table(read.csv(paste0(getwd(),"/Data/facturation_test.csv"))) 
-payments_train <- as.data.table(read.csv(paste0(getwd(),"/Data/paiements_train.csv"))) 
+payments_train <- as.data.table(read.csv(paste0(getwd(),"/Data/paiements_train.csv"))) # PAYING OFF CREDIT CARD
 payments_test <- as.data.table(read.csv(paste0(getwd(),"/Data/paiements_test.csv"))) 
-performance_train <- as.data.table(read.csv(paste0(getwd(),"/Data/performance_train.csv")))
-performance_test <- as.data.table(read.csv(paste0(getwd(),"/Data/performance_test.csv")))
-transactions_train <- as.data.table(read.csv(paste0(getwd(),"/Data/transactions_train.csv"))) 
+performance_train <- as.data.table(read.csv(paste0(getwd(),"/Data/performance_train.csv"))) # DEFAULT/NOT DEFAULT
+performance_test <- as.data.table(read.csv(paste0(getwd(),"/Data/performance_test.csv"))) 
+transactions_train <- as.data.table(read.csv(paste0(getwd(),"/Data/transactions_train.csv"))) # DAILY CREDIT CARD PURCHASES
 transactions_test <- as.data.table(read.csv(paste0(getwd(),"/Data/transactions_test.csv")))
 
 sampSol <- as.data.table(read.csv(paste0(getwd(),"/Data/sample_solution.csv")))
@@ -100,8 +100,18 @@ billing_train_grouped = billing_train %>%
     max_balance = max(CurrentTotalBalance),
     max_cash_balance = max(CashBalance),
     max_num_cmp = max(DelqCycle),
-    count_num_cmp = sum(DelqCycle_ind),
-    credit_change = (max(CreditLimit) != min(CreditLimit))
+    count_num_cmp = sum(DelqCycle_ind),    
+    credit_change = (max(CreditLimit) != min(CreditLimit)),
+    TotalBalanceOL_perc_max <- max(TotalBalanceOL_perc),
+    TotalBalanceOL_perc_mean <- mean(TotalBalanceOL_perc),
+    TotalBalanceOL_ind <- max(TotalBalanceOL_ind),
+    CB_ind <- max(CB_ind),
+    CB_limit_perc_max <- max(CB_limit_perc),
+    CB_limit_perc_mean <- mean(CB_limit_perc),
+    Spending_mean <- mean(Spending),
+    SpendingOL_perc_max <- max(SpendingOL_perc),
+    SpendingOL_perc_mean <- mean(SpendingOL_perc),
+    SpendingOL_ind <- max(SpendingOL_ind)
   )
 
 ## TEST
@@ -134,7 +144,17 @@ billing_test_grouped = billing_test %>%
     max_cash_balance = max(CashBalance),
     max_num_cmp = max(DelqCycle),
     count_num_cmp = sum(DelqCycle_ind),
-    credit_change = (max(CreditLimit) != min(CreditLimit))
+    credit_change = (max(CreditLimit) != min(CreditLimit)),
+    TotalBalanceOL_perc_max <- max(TotalBalanceOL_perc),
+    TotalBalanceOL_perc_mean <- mean(TotalBalanceOL_perc),
+    TotalBalanceOL_ind <- max(TotalBalanceOL_ind),
+    CB_ind <- max(CB_ind),
+    CB_limit_perc_max <- max(CB_limit_perc),
+    CB_limit_perc_mean <- mean(CB_limit_perc),
+    Spending_mean <- mean(Spending),
+    SpendingOL_perc_max <- max(SpendingOL_perc),
+    SpendingOL_perc_mean <- mean(SpendingOL_perc),
+    SpendingOL_ind <- max(SpendingOL_ind)
   )
 
 ##====================================
@@ -212,10 +232,35 @@ temp2_train = merge(temp1_train,performance_train, by = "ID_CPTE")
 train = merge(temp2_train, transactions_train_grouped, by = "ID_CPTE", all.x = TRUE)
 rm(temp1_train,temp2_train)
 
-temp1_test = merge(payments_test_grouped,transactions_test_grouped, by = "ID_CPTE") 
+temp1_test = merge(payments_test_grouped,billing_test_grouped, by = "ID_CPTE") 
 temp2_test = merge(temp1_test,performance_test, by = "ID_CPTE") 
 test = merge(temp2_test, transactions_test_grouped, by = "ID_CPTE", all.x = TRUE)
 rm(temp1_test,temp2_test)
+
+##====================================
+## Data Visualization
+##====================================
+
+## Use Tony's Shiny app
+
+## Correlation Plot
+dt_corr <- train[,!colnames(train) %in% c("PERIODID_MY", "number_transactions", "traveller_ind")]
+
+## Convert all logical to integer
+for (cn in colnames(dt_corr)){
+  if (class(dt_corr[[cn]]) == "logical"){
+    dt_corr[[cn]] <- as.numeric(dt_corr[[cn]])
+  }
+}
+
+## Output corrplot
+corrplot(cor(dt_corr), method = "circle", order = "alphabet")
+
+## Wanted predictors
+predictors <- c("count_num_cmp", "mean_payment", "credit_change")
+
+## Creating formula for models post correlation analysis
+formula <- as.formula(paste("Default ~", paste(predictors, collapse = "+")))
 
 #--------------------------------------------------------#
 # 2. Modeling                                            
@@ -227,22 +272,30 @@ rm(temp1_test,temp2_test)
 #   - SVM
 #--------------------------------------------------------#
 
-set.seed(8) # Patrice bring us luck
+## Split
+library(caTools)
+set.seed(8)
+split = sample.split(train$Default, SplitRatio = 0.70)
+model_train = subset(train, split == TRUE)
+model_test = subset(train, split == FALSE)
 
 ## RPART
-predictors <- c("number_transactions") # For testing
-formula <- as.formula(paste("Default ~", paste(predictors, collapse = "+")))
-
-rpart_classifier <- rpart(Default ~ ., data = train, method = "class",
+rpart_classifier <- rpart(Default ~ ., data = model_train, method = "class",
                      control = rpart.control(minsplit = 100, maxdepth = 10, cp=0.001))
 
-pred_rpart <- predict(rpart_classifier, train, type = "class")
-
-confusionMatrix(pred_rpart, train$Default)
+pred_rpart <- predict(rpart_classifier, model_test, type = "class")
 
 ## LOGISTIC
 
+logreg_classifier <- glm(formula, family = binomial, data = model_train)
 
+pred_logreg <- predict(logreg_classifier, newdata = model_test, type = "response")
+pred_rounded_logreg <- ifelse(pred_logreg >= 0.3,1,0)
+model_test$pred1 = pred_rounded_logreg
+model_test$pred2 = as.numeric(pred_rpart)-1
+
+# For test
+write.csv(model_test,paste0(getwd(),"/Submissions/dummy.csv"))
 
 ## XGB
 
@@ -251,8 +304,36 @@ confusionMatrix(pred_rpart, train$Default)
 
 ## SVM
 
+# Visualising the Training set results
+library(ElemStatLearn)
+set = train
+X1 = seq(min(set[, 1]) - 1, max(set[, 1]) + 1, by = 0.01)
+X2 = seq(min(set[, 2]) - 1, max(set[, 2]) + 1, by = 0.01)
+grid_set = expand.grid(X1, X2)
+colnames(grid_set) = c('Age', 'EstimatedSalary')
+y_grid = predict(classifier, newdata = grid_set)
+plot(set[, -3],
+     main = 'SVM (Training set)',
+     xlab = 'Age', ylab = 'Estimated Salary',
+     xlim = range(X1), ylim = range(X2))
+contour(X1, X2, matrix(as.numeric(y_grid), length(X1), length(X2)), add = TRUE)
+points(grid_set, pch = '.', col = ifelse(y_grid == 1, 'springgreen3', 'tomato'))
+points(set, pch = 21, bg = ifelse(set[, 3] == 1, 'green4', 'red3'))
 
-
+# Visualising the Test set results
+library(ElemStatLearn)
+set = test
+X1 = seq(min(set[, 1]) - 1, max(set[, 1]) + 1, by = 0.01)
+X2 = seq(min(set[, 2]) - 1, max(set[, 2]) + 1, by = 0.01)
+grid_set = expand.grid(X1, X2)
+colnames(grid_set) = c('Age', 'EstimatedSalary')
+y_grid = predict(classifier, newdata = grid_set)
+plot(set[, -3], main = 'SVM (Test set)',
+     xlab = 'Age', ylab = 'Estimated Salary',
+     xlim = range(X1), ylim = range(X2))
+contour(X1, X2, matrix(as.numeric(y_grid), length(X1), length(X2)), add = TRUE)
+points(grid_set, pch = '.', col = ifelse(y_grid == 1, 'springgreen3', 'tomato'))
+points(set, pch = 21, bg = ifelse(set[, 3] == 1, 'green4', 'red3'))
 
 #--------------------------------------------------------#
 # 3. Submission                                          
@@ -260,3 +341,19 @@ confusionMatrix(pred_rpart, train$Default)
 #                                                        
 #   - Create submission .csv
 #--------------------------------------------------------#
+
+final_pred <- predict(logreg_classifier, newdata = test, type = "response")
+final_pred_rounded <- ifelse(final_pred >= 0.5,1,0)
+
+submission <- data.frame(test$ID_CPTE, final_pred_rounded)
+colnames(submission) = c("ID_CPTE", "Default")
+
+write.csv(submission,paste0(getwd(),"/Submissions/Submission5_logreg.csv"))
+
+
+
+
+
+
+
+
