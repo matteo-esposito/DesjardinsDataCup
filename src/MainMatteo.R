@@ -16,7 +16,7 @@ setwd("~/Github/DesjardinsDataCup/")
 
 ## Package loading
 packages <- c("data.table", "rpart", "caret", "gbm", "mgcv", "ggplot2", "dplyr", 
-              "Hmisc", "xgboost", "corrplot", "e1071")
+              "Hmisc", "xgboost", "corrplot", "e1071", "plotly")
 sapply(packages, require, character.only = T)
 
 ## Load data
@@ -100,7 +100,8 @@ billing_train_grouped = billing_train %>%
     max_balance = max(CurrentTotalBalance),
     max_cash_balance = max(CashBalance),
     max_num_cmp = max(DelqCycle),
-    count_num_cmp = sum(DelqCycle_ind)
+    count_num_cmp = sum(DelqCycle_ind),
+    credit_change = (max(CreditLimit) != min(CreditLimit))
   )
 
 ## TEST
@@ -132,7 +133,8 @@ billing_test_grouped = billing_test %>%
     max_balance = max(CurrentTotalBalance),
     max_cash_balance = max(CashBalance),
     max_num_cmp = max(DelqCycle),
-    count_num_cmp = sum(DelqCycle_ind)
+    count_num_cmp = sum(DelqCycle_ind),
+    credit_change = (max(CreditLimit) != min(CreditLimit))
   )
 
 ##====================================
@@ -205,16 +207,14 @@ payments_test_grouped[is.na(payments_test_grouped)] <- 0
 ## Summary table (For models)
 ##====================================
 
-## Fix dimensionality issue (uniqueN(table$ID_CPTE)) >:(
-
-temp1_train = merge(payments_train_grouped,transactions_train_grouped, by = "ID_CPTE") 
-temp2_train = merge(temp1_train,billing_train_grouped, by = "ID_CPTE") 
-train = merge(temp2_train, performance_train, by = "ID_CPTE")
+temp1_train = merge(payments_train_grouped,billing_train_grouped, by = "ID_CPTE") 
+temp2_train = merge(temp1_train,performance_train, by = "ID_CPTE") 
+train = merge(temp2_train, transactions_train_grouped, by = "ID_CPTE", all.x = TRUE)
 rm(temp1_train,temp2_train)
 
 temp1_test = merge(payments_test_grouped,transactions_test_grouped, by = "ID_CPTE") 
-temp2_test = merge(temp1_test,billing_test_grouped, by = "ID_CPTE") 
-test = merge(temp2_test, performance_test, by = "ID_CPTE")
+temp2_test = merge(temp1_test,performance_test, by = "ID_CPTE") 
+test = merge(temp2_test, transactions_test_grouped, by = "ID_CPTE", all.x = TRUE)
 rm(temp1_test,temp2_test)
 
 #--------------------------------------------------------#
@@ -227,7 +227,7 @@ rm(temp1_test,temp2_test)
 #   - SVM
 #--------------------------------------------------------#
 
-set.seed(257) # Patrice bring us luck
+set.seed(8) # Patrice bring us luck
 
 ## RPART
 predictors <- c("number_transactions") # For testing
@@ -239,10 +239,6 @@ rpart_classifier <- rpart(Default ~ ., data = train, method = "class",
 pred_rpart <- predict(rpart_classifier, train, type = "class")
 
 confusionMatrix(pred_rpart, train$Default)
-
-## Table of variable importance
-table_varimp <- importance(colnames(tr_m), model = rpart_classifier) 
-table_varimp
 
 ## LOGISTIC
 
