@@ -11,23 +11,24 @@
 #--------------------------------------------------------#
 
 ## WD
-setwd("~/Github/DesjardinsDataCup")
+setwd("~/Github/DesjardinsDataCup/")
 
 ## Package loading
-packages <- c("data.table", "rpart", "caret", "gbm", "mgcv", "ggplot2", "plyr", "dplyr", "Hmisc", "xgboost", "corrplot")
+packages <- c("data.table", "rpart", "caret", "gbm", "mgcv", "ggplot2", "dplyr", 
+              "Hmisc", "xgboost", "corrplot", "e1071")
 sapply(packages, require, character.only = T)
 
 ## Load data
-facturation_train <- as.data.table(read.csv("~/Github/DesjardinsDataCup/Data/facturation_train.csv")) 
-facturation_test <- as.data.table(read.csv("~/Github/DesjardinsDataCup/Data/facturation_test.csv")) 
-paiements_train <- as.data.table(read.csv("~/Github/DesjardinsDataCup/Data/paiements_train.csv")) 
-paiements_test <- as.data.table(read.csv("~/Github/DesjardinsDataCup/Data/paiements_test.csv")) 
-performance_train <- as.data.table(read.csv("~/Github/DesjardinsDataCup/Data/performance_train.csv")) 
-performance_test <- as.data.table(read.csv("~/Github/DesjardinsDataCup/Data/performance_test.csv")) 
-transactions_train <- as.data.table(read.csv("~/Github/DesjardinsDataCup/Data/transactions_train.csv")) 
-transactions_test <- as.data.table(read.csv("~/Github/DesjardinsDataCup/Data/transactions_test.csv")) 
+billing_train <- as.data.table(read.csv(paste0(getwd(),"/Data/facturation_train.csv")))
+billing_test <- as.data.table(read.csv(paste0(getwd(),"/Data/facturation_test.csv"))) 
+payments_train <- as.data.table(read.csv(paste0(getwd(),"/Data/paiements_train.csv"))) 
+payments_test <- as.data.table(read.csv(paste0(getwd(),"/Data/paiements_test.csv"))) 
+performance_train <- as.data.table(read.csv(paste0(getwd(),"/Data/performance_train.csv")))
+performance_test <- as.data.table(read.csv(paste0(getwd(),"/Data/performance_test.csv")))
+transactions_train <- as.data.table(read.csv(paste0(getwd(),"/Data/transactions_train.csv"))) 
+transactions_test <- as.data.table(read.csv(paste0(getwd(),"/Data/transactions_test.csv")))
 
-sampSol <- as.data.table(read.csv("~/Github/DesjardinsDataCup/Data/sample_solution.csv")) 
+sampSol <- as.data.table(read.csv(paste0(getwd(),"/Data/sample_solution.csv")))
 
 #--------------------------------------------------------#
 # 1. Preprocessing                                       
@@ -45,69 +46,72 @@ NAcount <- function(df){
   sapply(df,function(x) table(is.na(x)))
 }
 
-NAcount(facturation_train)
-NAcount(paiements_train)
+NAcount(billing_train)
+NAcount(payments_train)
 NAcount(performance_train)
 NAcount(transactions_train)
 
-## Naive imputation right now, since group avg substitution not working
-paiements_train$TRANSACTION_AMT <- ifelse(is.na(paiements_train$TRANSACTION_AMT), mean(paiements_train$TRANSACTION_AMT, na.rm=T), paiements_train$TRANSACTION_AMT)
-sum(is.na(paiements_train$TRANSACTION_AMT)) 
+## Naive global mean imputation right now, since group avg substitution not working
+payments_train$TRANSACTION_AMT <- ifelse(is.na(payments_train$TRANSACTION_AMT), mean(payments_train$TRANSACTION_AMT, na.rm=T), payments_train$TRANSACTION_AMT)
+sum(is.na(payments_train$TRANSACTION_AMT)) 
 
 # Impute with mean by group (ID)
 #paiements_train_2 <- paiements_train %>% 
 #                    group_by(ID_CPTE) %>% 
 #                    mutate(TRANSACTION_AMT= ifelse(is.na(TRANSACTION_AMT), mean(TRANSACTION_AMT, na.rm=TRUE), TRANSACTION_AMT))
 
-#--------------------------------------------------------#
-# 2. Data Exploration                                    #
-# ______________________________________________________ #
-#                                                        #
-#   - detail 1                                           #
-#   - detail 2                                           #
-#--------------------------------------------------------#
+## Billing features (OL = Over limit)
+## Perc/Ind multicollinearity??
+billing_train$TotalBalanceOL_perc = billing_train$CurrentTotalBalance/billing_train$CreditLimit
+billing_train$TotalBalanceOL_ind = as.numeric(billing_train$CurrentTotalBalance > billing_train$CreditLimit)
 
-## Thanks Tony ;)
-payments_train_grouped = paiements_train %>%
+billing_train$CB_limit_perc = billing_train$CashBalance/billing_train$CreditLimit
+billing_train$CB_limit_ind = as.numeric(billing_train$CashBalance > billing_train$CreditLimit)
+billing_train$CB_ind = as.numeric(billing_train$CashBalance > 0 )
+
+billing_train$Spending = billing_train$CurrentTotalBalance - billing_train$CashBalance
+billing_train$SpendingOL_perc = billing_train$Spending/billing_train$CreditLimit
+billing_train$SpendingOL_ind = as.numeric(billing_train$Spending > billing_train$CreditLimit)
+
+# CMP = Consecutive missing payments
+billing_train$Num_CMP = billing_train$DelqCycle
+
+## New table to store summaritive variables (useful for modeling in the future)
+billing_train_grouped <- setNames(data.table(matrix(nrow = 11900, ncol = 1)), c("ID_CPTE"))
+billing_train_grouped$ID_CPTE = unique(billing_train$ID_CPTE)
+
+billing_train$DelqCycle_ind <- ifelse(billing_train$DelqCycle != 0, 1, 0)
+
+billing_train_grouped = billing_train %>%
   group_by(ID_CPTE) %>%
-  summarize(mean_payment = mean(TRANSACTION_AMT),
-            #number_payments = n(),
-            max_payment = max(TRANSACTION_AMT),
-            min_payment = min(TRANSACTION_AMT),
-            median_payment = median(TRANSACTION_AMT),
-            reversedPayment = sum(PAYMENT_REVERSAL_XFLG == "N")>=1,
-            noPayments = sum(PAYMENT_REVERSAL_XFLG == "")>=1)
-
-payments_train_grouped[is.na(payments_train_grouped)] <- 0
-
-billing_train_grouped = facturation_train %>%
-  group_by(ID_CPTE) %>%
-  summarize(
+  summarise(
     mean_balance = mean(CurrentTotalBalance),
     mean_cash_balance = mean(CashBalance),
     max_balance = max(CurrentTotalBalance),
-    max_cash_balance = max(CashBalance)
+    max_cash_balance = max(CashBalance),
+    max_num_cmp = max(DelqCycle),
+    count_num_cmp = sum(DelqCycle_ind)
   )
 
-transactions_train_grouped = transactions_train %>%
-  group_by(ID_CPTE) %>%
-  summarize(
-    number_transactions = n()
-  )
+## Transaction features
+transactions_train$isLocal = as.numeric(transactions_train$MERCHANT_COUNTRY_XCD == "DP")
 
-#--------------------------------------------------------#
-# 3. Modeling                                            #
-# ______________________________________________________ #
-#                                                        #
-#   - detail 1                                           #
-#   - detail 2                                           #
-#--------------------------------------------------------#
+
 
 
 #--------------------------------------------------------#
-# 4. Submission                                          #
-# ______________________________________________________ #
-#                                                        #
-#   - detail 1                                           #
-#   - detail 2                                           #
+# 2. Modeling                                            
+# ______________________________________________________ 
+#                                                        
+#   - Logistic Regression (GLM)                          
+#   - XGBoost
+#   - SVM
+#--------------------------------------------------------#
+
+
+#--------------------------------------------------------#
+# 3. Submission                                          
+# ______________________________________________________ 
+#                                                        
+#   - Create submission .csv
 #--------------------------------------------------------#
