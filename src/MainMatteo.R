@@ -102,16 +102,16 @@ billing_train_grouped = billing_train %>%
     max_num_cmp = max(DelqCycle),
     count_num_cmp = sum(DelqCycle_ind),    
     credit_change = (max(CreditLimit) != min(CreditLimit)),
-    TotalBalanceOL_perc_max <- max(TotalBalanceOL_perc),
-    TotalBalanceOL_perc_mean <- mean(TotalBalanceOL_perc),
-    TotalBalanceOL_ind <- max(TotalBalanceOL_ind),
-    CB_ind <- max(CB_ind),
-    CB_limit_perc_max <- max(CB_limit_perc),
-    CB_limit_perc_mean <- mean(CB_limit_perc),
-    Spending_mean <- mean(Spending),
-    SpendingOL_perc_max <- max(SpendingOL_perc),
-    SpendingOL_perc_mean <- mean(SpendingOL_perc),
-    SpendingOL_ind <- max(SpendingOL_ind)
+    TotalBalanceOL_perc_max = max(TotalBalanceOL_perc),
+    TotalBalanceOL_perc_mean = mean(TotalBalanceOL_perc),
+    TotalBalanceOL_ind = max(TotalBalanceOL_ind),
+    CB_ind = max(CB_ind),
+    CB_limit_perc_max = max(CB_limit_perc),
+    CB_limit_perc_mean = mean(CB_limit_perc),
+    Spending_mean = mean(Spending),
+    SpendingOL_perc_max = max(SpendingOL_perc),
+    SpendingOL_perc_mean = mean(SpendingOL_perc),
+    SpendingOL_ind = max(SpendingOL_ind)
   )
 
 ## TEST
@@ -145,16 +145,16 @@ billing_test_grouped = billing_test %>%
     max_num_cmp = max(DelqCycle),
     count_num_cmp = sum(DelqCycle_ind),
     credit_change = (max(CreditLimit) != min(CreditLimit)),
-    TotalBalanceOL_perc_max <- max(TotalBalanceOL_perc),
-    TotalBalanceOL_perc_mean <- mean(TotalBalanceOL_perc),
-    TotalBalanceOL_ind <- max(TotalBalanceOL_ind),
-    CB_ind <- max(CB_ind),
-    CB_limit_perc_max <- max(CB_limit_perc),
-    CB_limit_perc_mean <- mean(CB_limit_perc),
-    Spending_mean <- mean(Spending),
-    SpendingOL_perc_max <- max(SpendingOL_perc),
-    SpendingOL_perc_mean <- mean(SpendingOL_perc),
-    SpendingOL_ind <- max(SpendingOL_ind)
+    TotalBalanceOL_perc_max = max(TotalBalanceOL_perc),
+    TotalBalanceOL_perc_mean = mean(TotalBalanceOL_perc),
+    TotalBalanceOL_ind = max(TotalBalanceOL_ind),
+    CB_ind = max(CB_ind),
+    CB_limit_perc_max = max(CB_limit_perc),
+    CB_limit_perc_mean = mean(CB_limit_perc),
+    Spending_mean = mean(Spending),
+    SpendingOL_perc_max = max(SpendingOL_perc),
+    SpendingOL_perc_mean = mean(SpendingOL_perc),
+    SpendingOL_ind = max(SpendingOL_ind)
   )
 
 ##====================================
@@ -260,25 +260,32 @@ for (cn in colnames(dt_corr)){
 }
 
 ## Output corrplot
-corrplot(cor(dt_corr), method = "circle", order = "alphabet")
+corrplot(cor(dt_corr), method = "circle", order = "alphabet", type = "lower")
 
 ## Wanted predictors
-predictors <- c("count_num_cmp", "mean_payment", "credit_change")
+## Since we're doing classification we don't care THAT much about multicollinearity
+predictors_base <- c("count_num_cmp", "mean_payment", "credit_change", "TotalBalanceOL_perc_max", 
+                "TotalBalanceOL_perc_mean", "TotalBalanceOL_ind", "SpendingOL_perc_max", 
+                "SpendingOL_perc_mean", "SpendingOL_ind")
+
+predictors_1 <- c("count_num_cmp", "mean_payment", "credit_change", "TotalBalanceOL_perc_max", 
+                "TotalBalanceOL_perc_mean", "SpendingOL_perc_max", "SpendingOL_perc_mean")
 
 ## Creating formula for models post correlation analysis
-formula <- as.formula(paste("Default ~", paste(predictors, collapse = "+")))
+formula <- as.formula(paste("Default ~", paste(predictors_1, collapse = "+")))
 
 #--------------------------------------------------------#
 # 2. Modeling                                            
 # ______________________________________________________ 
-#                                                        
+#                    
+#   - Splitting data for modeling
 #   - Decision trees/rpart
 #   - Logistic Regression (GLM)                          
 #   - XGBoost
 #   - SVM
 #--------------------------------------------------------#
 
-## Split
+## Spliting Data for models
 library(caTools)
 set.seed(8)
 split = sample.split(train$Default, SplitRatio = 0.70)
@@ -286,60 +293,61 @@ model_train = subset(train, split == TRUE)
 model_test = subset(train, split == FALSE)
 
 ## RPART
-rpart_classifier <- rpart(Default ~ ., data = model_train, method = "class",
+rpart_classifier <- rpart(formula, data = model_train, method = "class",
                      control = rpart.control(minsplit = 100, maxdepth = 10, cp=0.001))
 
 pred_rpart <- predict(rpart_classifier, model_test, type = "class")
+
+table(pred_rpart,model_test$Default)
 
 ## LOGISTIC
 
 logreg_classifier <- glm(formula, family = binomial, data = model_train)
 
 pred_logreg <- predict(logreg_classifier, newdata = model_test, type = "response")
-pred_rounded_logreg <- ifelse(pred_logreg >= 0.3,1,0)
+pred_rounded_logreg <- ifelse(pred_logreg >= 0.5,1,0)
+table(pred_rounded_logreg,model_test$Default)
+
 model_test$pred1 = pred_rounded_logreg
 model_test$pred2 = as.numeric(pred_rpart)-1
 
 # For test
 write.csv(model_test,paste0(getwd(),"/Submissions/dummy.csv"))
 
-## XGB
+## XGboost
 
+train_for_xgb <- copy(train)
+train_for_xgb$Default <- ifelse(train_for_xgb$Default == 0, "No", "Yes") # Need to make this a factor for xgb
 
+cv.ctrl <- trainControl(method = "repeatedcv", repeats = 1,number = 3, 
+                        #summaryFunction = twoClassSummary,
+                        classProbs = TRUE,
+                        allowParallel=T)
 
+xgb.grid <- expand.grid(nrounds = 200, eta = c(0.01,0.05,0.1),
+                        max_depth = c(2,4,6),gamma = 0,
+                        colsample_bytree = 0.8,min_child_weight = 100, 
+                        subsample = 0.8)
+
+## Modifying formula after seeing the output of the first run.
+predictors_xgb <- c("TotalBalanceOL_perc_max", "TotalBalanceOL_perc_mean", "count_num_cmp", "credit_change")
+formula_xgb <- as.formula(paste0("Default ~", paste(predictors_xgb, collapse = "+")))
+
+xgb_tune <-train(formula_xgb,
+                 data=train_for_xgb,
+                 method="xgbTree",
+                 trControl=cv.ctrl,
+                 tuneGrid=xgb.grid,
+                 verbose = T,
+                 metric="ROC",
+                 nthread = 2)
+
+## Visualize results
+print(xgb_tune)
+plot(xgb_tune)
 
 ## SVM
 
-# Visualising the Training set results
-library(ElemStatLearn)
-set = train
-X1 = seq(min(set[, 1]) - 1, max(set[, 1]) + 1, by = 0.01)
-X2 = seq(min(set[, 2]) - 1, max(set[, 2]) + 1, by = 0.01)
-grid_set = expand.grid(X1, X2)
-colnames(grid_set) = c('Age', 'EstimatedSalary')
-y_grid = predict(classifier, newdata = grid_set)
-plot(set[, -3],
-     main = 'SVM (Training set)',
-     xlab = 'Age', ylab = 'Estimated Salary',
-     xlim = range(X1), ylim = range(X2))
-contour(X1, X2, matrix(as.numeric(y_grid), length(X1), length(X2)), add = TRUE)
-points(grid_set, pch = '.', col = ifelse(y_grid == 1, 'springgreen3', 'tomato'))
-points(set, pch = 21, bg = ifelse(set[, 3] == 1, 'green4', 'red3'))
-
-# Visualising the Test set results
-library(ElemStatLearn)
-set = test
-X1 = seq(min(set[, 1]) - 1, max(set[, 1]) + 1, by = 0.01)
-X2 = seq(min(set[, 2]) - 1, max(set[, 2]) + 1, by = 0.01)
-grid_set = expand.grid(X1, X2)
-colnames(grid_set) = c('Age', 'EstimatedSalary')
-y_grid = predict(classifier, newdata = grid_set)
-plot(set[, -3], main = 'SVM (Test set)',
-     xlab = 'Age', ylab = 'Estimated Salary',
-     xlim = range(X1), ylim = range(X2))
-contour(X1, X2, matrix(as.numeric(y_grid), length(X1), length(X2)), add = TRUE)
-points(grid_set, pch = '.', col = ifelse(y_grid == 1, 'springgreen3', 'tomato'))
-points(set, pch = 21, bg = ifelse(set[, 3] == 1, 'green4', 'red3'))
 
 #--------------------------------------------------------#
 # 3. Submission                                          
@@ -354,7 +362,7 @@ final_pred_rounded <- ifelse(final_pred >= 0.5,1,0)
 submission <- data.frame(test$ID_CPTE, final_pred_rounded)
 colnames(submission) = c("ID_CPTE", "Default")
 
-write.csv(submission,paste0(getwd(),"/Submissions/Submission5_logreg.csv"))
+write.csv(submission,paste0(getwd(),"/Submissions/Submission.csv"))
 
 
 
