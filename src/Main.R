@@ -20,7 +20,7 @@ setwd("~/Github/DesjardinsDataCup/")
 
 ## Package loading
 packages <- c("data.table", "rpart", "caret", "gbm", "mgcv", "ggplot2", "dplyr", 
-              "Hmisc", "xgboost", "corrplot", "e1071", "plotly")
+              "Hmisc", "xgboost", "corrplot", "e1071", "plotly", "ROSE")
 sapply(packages, require, character.only = T)
 
 ## Load data
@@ -406,28 +406,32 @@ cv.ctrl <- trainControl(method = "repeatedcv", repeats = 2, number = 3,
 ## Grid searching
 xgb.grid <- expand.grid(nrounds = 300, eta = c(0.01,0.05,0.1),
                         max_depth = c(5,7,9), gamma = 0,
-                        colsample_bytree = 0.8, min_child_weight = c(200,150,100), 
+                        colsample_bytree = 0.8, min_child_weight = 100, 
                         subsample = 0.8)
 
 ## Modifying formula after seeing the output of the first run.
 predictors_xgb <- c("TotalBalanceOL_perc_max", "TotalBalanceOL_perc_mean", "count_num_cmp", "credit_change")
-formula_xgb <- as.formula(paste0("Default ~", paste(colnames(train), collapse = "+")))
+formula_xgb <- as.formula(paste0("Default ~", paste(predictors_xgb, collapse = "+")))
 
 ## Run the model
-xgb_tune <-train(formula,
+xgb_tune <-train(formula_xgb,
                  data=train_for_xgb,
                  method="xgbTree",
                  trControl=cv.ctrl,
                  tuneGrid=xgb.grid,
                  #na.action = "na.pass",
                  verbose = T,
-                 metric="ROC",
+                 metric="merror",
                  nthread = 3)
 
 ## Visualize results
 print(xgb_tune)
 plot(xgb_tune)
 
+## Calculate ROC
+roc.curve(predict(xgb_tune, train), train$Default)
+
+## Final prediction for submission
 test$xgb_pred <- as.numeric(predict(xgb_tune, test))-1
 
 ##====================================
