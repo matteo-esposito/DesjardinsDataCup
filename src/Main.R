@@ -365,17 +365,23 @@ table(pred_rpart,model_test$Default)
 ## Logistic Regression
 ##====================================
 
-logreg_classifier <- glm(formula, family = binomial, data = model_train)
+logreg_classifier <- glm(Default ~ mean_payment + number_payments + max_payment + 
+                           +                  min_payment + median_payment + reversedPayment + noPayments + 
+                           +                  mean_balance + mean_cash_balance + max_balance + max_cash_balance + 
+                           +                  max_num_cmp + count_num_cmp + credit_change + TotalBalanceOL_perc_max + 
+                           +                  TotalBalanceOL_perc_mean + TotalBalanceOL_ind + CB_ind + 
+                           +                  CB_limit_perc_max + CB_limit_perc_mean + Spending_mean + 
+                           +                  SpendingOL_perc_max + SpendingOL_perc_mean + SpendingOL_ind,, family = binomial, data = train)
 
-pred_logreg <- predict(logreg_classifier, newdata = model_test, type = "response")
-pred_rounded_logreg <- ifelse(pred_logreg >= 0.5,1,0)
+pred_logreg <- predict(logreg_classifier, newdata = test, type = "response")
+pred_rounded_logreg <- ifelse(pred_logreg >= 0.257,1,0)
 table(pred_rounded_logreg,model_test$Default)
 
 model_test$pred1 = pred_rounded_logreg
 model_test$pred2 = as.numeric(pred_rpart)-1
 
 # For test
-write.csv(model_test,paste0(getwd(),"/Submissions/dummy.csv"))
+write.csv(test,paste0(getwd(),"/Submissions/Submission8_log.csv"))
 
 ##====================================
 ## XGBoost
@@ -384,32 +390,41 @@ write.csv(model_test,paste0(getwd(),"/Submissions/dummy.csv"))
 train_for_xgb <- copy(train)
 train_for_xgb$Default <- ifelse(train_for_xgb$Default == 0, "No", "Yes") # Need to make this a factor for xgb
 
-cv.ctrl <- trainControl(method = "repeatedcv", repeats = 1,number = 3, 
+cv.ctrl <- trainControl(method = "repeatedcv", repeats = 1, number = 3, 
                         #summaryFunction = twoClassSummary,
                         classProbs = TRUE,
-                        allowParallel=T)
+                        allowParallel = T)
 
 xgb.grid <- expand.grid(nrounds = 200, eta = c(0.01,0.05,0.1),
-                        max_depth = c(2,4,6),gamma = 0,
-                        colsample_bytree = 0.8,min_child_weight = 100, 
+                        max_depth = c(2,4,6), gamma = 0,
+                        colsample_bytree = 0.8, min_child_weight = 100, 
                         subsample = 0.8)
 
 ## Modifying formula after seeing the output of the first run.
 predictors_xgb <- c("TotalBalanceOL_perc_max", "TotalBalanceOL_perc_mean", "count_num_cmp", "credit_change")
-formula_xgb <- as.formula(paste0("Default ~", paste(predictors_xgb, collapse = "+")))
+formula_xgb <- as.formula(paste0("Default ~", paste(colnames(train), collapse = "+")))
 
-xgb_tune <-train(formula,
+xgb_tune <-train(Default ~ mean_payment + number_payments + max_payment + 
+                 min_payment + median_payment + reversedPayment + noPayments + 
+                 mean_balance + mean_cash_balance + max_balance + max_cash_balance + 
+                 max_num_cmp + count_num_cmp + credit_change + TotalBalanceOL_perc_max + 
+                 TotalBalanceOL_perc_mean + TotalBalanceOL_ind + CB_ind + 
+                 CB_limit_perc_max + CB_limit_perc_mean + Spending_mean + 
+                 SpendingOL_perc_max + SpendingOL_perc_mean + SpendingOL_ind,
                  data=train_for_xgb,
                  method="xgbTree",
                  trControl=cv.ctrl,
                  tuneGrid=xgb.grid,
+                 #na.action = "na.pass",
                  verbose = T,
-                 metric="merror",
+                 metric="ROC",
                  nthread = 2)
 
 ## Visualize results
 print(xgb_tune)
 plot(xgb_tune)
+
+test$xgb_pred <- as.numeric(predict(xgb_tune, test))-1
 
 ##====================================
 ## Support Vector Machines
@@ -426,10 +441,10 @@ plot(xgb_tune)
 final_pred <- predict(logreg_classifier, newdata = test, type = "response")
 final_pred_rounded <- ifelse(final_pred >= 0.5,1,0)
 
-submission <- data.frame(test$ID_CPTE, final_pred_rounded)
+submission <- data.frame(test$ID_CPTE, test$xgb_pred)
 colnames(submission) = c("ID_CPTE", "Default")
 
-write.csv(submission,paste0(getwd(),"/Submissions/Submission.csv"))
+write.csv(submission,paste0(getwd(),"/Submissions/Submission6.csv"))
 
 
 
