@@ -262,6 +262,10 @@ for (cn in colnames(dt_corr)){
 ## Output corrplot
 corrplot(cor(dt_corr), method = "circle", order = "alphabet", type = "lower")
 
+##====================================
+## Formula
+##====================================
+
 ## Wanted predictors
 ## Since we're doing classification we don't care THAT much about multicollinearity
 predictors_base <- c("count_num_cmp", "mean_payment", "credit_change", "TotalBalanceOL_perc_max", 
@@ -272,7 +276,7 @@ predictors_1 <- c("count_num_cmp", "mean_payment", "credit_change", "TotalBalanc
                 "TotalBalanceOL_perc_mean", "SpendingOL_perc_max", "SpendingOL_perc_mean")
 
 ## Creating formula for models post correlation analysis
-formula <- as.formula(paste("Default ~", paste(predictors_1, collapse = "+")))
+formula <- as.formula(paste("Default ~", paste(predictors_base, collapse = "+")))
 
 #--------------------------------------------------------#
 # 2. Modeling                                            
@@ -292,7 +296,10 @@ split = sample.split(train$Default, SplitRatio = 0.70)
 model_train = subset(train, split == TRUE)
 model_test = subset(train, split == FALSE)
 
-## RPART
+##====================================
+## Recursive Partitioning
+##====================================
+
 rpart_classifier <- rpart(formula, data = model_train, method = "class",
                      control = rpart.control(minsplit = 100, maxdepth = 10, cp=0.001))
 
@@ -300,7 +307,9 @@ pred_rpart <- predict(rpart_classifier, model_test, type = "class")
 
 table(pred_rpart,model_test$Default)
 
-## LOGISTIC
+##====================================
+## Logistic Regression
+##====================================
 
 logreg_classifier <- glm(formula, family = binomial, data = model_train)
 
@@ -314,7 +323,9 @@ model_test$pred2 = as.numeric(pred_rpart)-1
 # For test
 write.csv(model_test,paste0(getwd(),"/Submissions/dummy.csv"))
 
-## XGboost
+##====================================
+## XGBoost
+##====================================
 
 train_for_xgb <- copy(train)
 train_for_xgb$Default <- ifelse(train_for_xgb$Default == 0, "No", "Yes") # Need to make this a factor for xgb
@@ -333,20 +344,22 @@ xgb.grid <- expand.grid(nrounds = 200, eta = c(0.01,0.05,0.1),
 predictors_xgb <- c("TotalBalanceOL_perc_max", "TotalBalanceOL_perc_mean", "count_num_cmp", "credit_change")
 formula_xgb <- as.formula(paste0("Default ~", paste(predictors_xgb, collapse = "+")))
 
-xgb_tune <-train(formula_xgb,
+xgb_tune <-train(formula,
                  data=train_for_xgb,
                  method="xgbTree",
                  trControl=cv.ctrl,
                  tuneGrid=xgb.grid,
                  verbose = T,
-                 metric="ROC",
+                 metric="merror",
                  nthread = 2)
 
 ## Visualize results
 print(xgb_tune)
 plot(xgb_tune)
 
-## SVM
+##====================================
+## Support Vector Machines
+##====================================
 
 
 #--------------------------------------------------------#
