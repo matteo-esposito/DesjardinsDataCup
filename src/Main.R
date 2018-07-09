@@ -3,6 +3,10 @@
 # June/July 2018
 # Matteo Esposito, Haiqi Liang, Fred Siino, Tony Yuan (alphabetical bros)
 
+# TODO
+#   - what category does the person spend the most on?
+#   - knn for transaction features 
+
 #--------------------------------------------------------#
 # 0. Preliminary                                         #
 # ______________________________________________________ #
@@ -77,7 +81,7 @@ billing_train$TotalBalanceOL_ind = as.numeric(billing_train$CurrentTotalBalance 
 
 billing_train$CB_limit_perc = billing_train$CashBalance/billing_train$CreditLimit
 billing_train$CB_limit_ind = as.numeric(billing_train$CashBalance > billing_train$CreditLimit)
-billing_train$CB_ind = as.numeric(billing_train$CashBalance > 0 )
+billing_train$CB_ind = as.numeric(billing_train$CashBalance > 0)
 
 billing_train$Spending = billing_train$CurrentTotalBalance - billing_train$CashBalance
 billing_train$SpendingOL_perc = billing_train$Spending/billing_train$CreditLimit
@@ -242,6 +246,7 @@ transactions_test_grouped = transactions_test %>%
   )
 
 ## Observe the number of occurrences of each pairing (modify variables if you want to try some combinations out yourself)
+## NOTE: Might need to re-run this section...
 dt_inspection <- transactions_train[,.SD,.SDcols=c("ID_CPTE","TRANSACTION_CATEGORY_XCD", "TRANSACTION_TYPE_XCD")]
 dt_pair_count <- merge(dt_inspection, train, by = "ID_CPTE", all.x = TRUE)
 dt_pair_count$pair_count <- 1
@@ -304,14 +309,15 @@ rm(temp1_test,temp2_test)
 ## Use Tony's Shiny app
 
 ## Correlation Plot
-dt_corr <- train[,!colnames(train) %in% c("PERIODID_MY", "number_transactions", "traveller_ind")]
+dt_corr <- na.omit(train[,!colnames(train) %in% c("PERIODID_MY", "number_transactions", "traveller_ind",
+                                          "trx_type_mode", "trx_cat_mode")])
 
 ## Convert all logical to integer
-for (cn in colnames(dt_corr)){
-  if (class(dt_corr[[cn]]) == "logical"){
-    dt_corr[[cn]] <- as.numeric(dt_corr[[cn]])
-  }
-}
+# for (cn in colnames(dt_corr)){
+#   if (class(dt_corr[[cn]]) == "logical"){
+#     dt_corr[[cn]] <- as.numeric(dt_corr[[cn]])
+#   }
+# }
 
 ## Output corrplot
 corrplot(cor(dt_corr), method = "circle", order = "alphabet", type = "lower")
@@ -330,7 +336,7 @@ predictors_1 <- c("count_num_cmp", "mean_payment", "credit_change", "TotalBalanc
                 "TotalBalanceOL_perc_mean", "SpendingOL_perc_max", "SpendingOL_perc_mean")
 
 ## Creating formula for models post correlation analysis
-formula <- as.formula(paste("Default ~", paste(predictors_base, collapse = "+")))
+formula <- as.formula(paste("Default ~", paste(predictors_1, collapse = "+")))
 
 #--------------------------------------------------------#
 # 2. Modeling                                            
@@ -371,7 +377,7 @@ logreg_classifier <- glm(Default ~ mean_payment + number_payments + max_payment 
                            +                  max_num_cmp + count_num_cmp + credit_change + TotalBalanceOL_perc_max + 
                            +                  TotalBalanceOL_perc_mean + TotalBalanceOL_ind + CB_ind + 
                            +                  CB_limit_perc_max + CB_limit_perc_mean + Spending_mean + 
-                           +                  SpendingOL_perc_max + SpendingOL_perc_mean + SpendingOL_ind,, family = binomial, data = train)
+                           +                  SpendingOL_perc_max + SpendingOL_perc_mean + SpendingOL_ind, family = binomial, data = train)
 
 pred_logreg <- predict(logreg_classifier, newdata = test, type = "response")
 pred_rounded_logreg <- ifelse(pred_logreg >= 0.257,1,0)
@@ -387,30 +393,28 @@ write.csv(test,paste0(getwd(),"/Submissions/Submission9_log.csv"))
 ## XGBoost
 ##====================================
 
+## Converting the response into a factor for xgboost
 train_for_xgb <- copy(train)
 train_for_xgb$Default <- ifelse(train_for_xgb$Default == 0, "No", "Yes") # Need to make this a factor for xgb
 
-cv.ctrl <- trainControl(method = "repeatedcv", repeats = 1, number = 3, 
+## Cross-validation
+cv.ctrl <- trainControl(method = "repeatedcv", repeats = 2, number = 3, 
                         #summaryFunction = twoClassSummary,
                         classProbs = TRUE,
                         allowParallel = T)
 
-xgb.grid <- expand.grid(nrounds = 200, eta = c(0.01,0.05,0.1),
-                        max_depth = c(2,4,6), gamma = 0,
-                        colsample_bytree = 0.8, min_child_weight = 100, 
+## Grid searching
+xgb.grid <- expand.grid(nrounds = 300, eta = c(0.01,0.05,0.1),
+                        max_depth = c(5,7,9), gamma = 0,
+                        colsample_bytree = 0.8, min_child_weight = c(200,150,100), 
                         subsample = 0.8)
 
 ## Modifying formula after seeing the output of the first run.
 predictors_xgb <- c("TotalBalanceOL_perc_max", "TotalBalanceOL_perc_mean", "count_num_cmp", "credit_change")
 formula_xgb <- as.formula(paste0("Default ~", paste(colnames(train), collapse = "+")))
 
-xgb_tune <-train(Default ~ mean_payment + number_payments + max_payment + 
-                 min_payment + median_payment + reversedPayment + noPayments + 
-                 mean_balance + mean_cash_balance + max_balance + max_cash_balance + 
-                 max_num_cmp + count_num_cmp + credit_change + TotalBalanceOL_perc_max + 
-                 TotalBalanceOL_perc_mean + TotalBalanceOL_ind + CB_ind + 
-                 CB_limit_perc_max + CB_limit_perc_mean + Spending_mean + 
-                 SpendingOL_perc_max + SpendingOL_perc_mean + SpendingOL_ind,
+## Run the model
+xgb_tune <-train(formula,
                  data=train_for_xgb,
                  method="xgbTree",
                  trControl=cv.ctrl,
@@ -418,7 +422,7 @@ xgb_tune <-train(Default ~ mean_payment + number_payments + max_payment +
                  #na.action = "na.pass",
                  verbose = T,
                  metric="ROC",
-                 nthread = 2)
+                 nthread = 3)
 
 ## Visualize results
 print(xgb_tune)
