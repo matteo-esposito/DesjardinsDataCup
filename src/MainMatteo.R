@@ -171,7 +171,9 @@ transactions_train_grouped = transactions_train %>%
   group_by(ID_CPTE) %>%
   summarise(
     number_transactions = n(), 
-    traveller_ind = ifelse(number_transactions != sum(isLocal),1,0)
+    traveller_ind = ifelse(number_transactions != sum(isLocal),1,0),
+    trx_type_mode = names(table(TRANSACTION_TYPE_XCD))[which.max(table(TRANSACTION_TYPE_XCD))],
+    trx_cat_mode = names(table(TRANSACTION_CATEGORY_XCD))[which.max(table(TRANSACTION_CATEGORY_XCD))]
   )
 
 ## TEST
@@ -184,7 +186,9 @@ transactions_test_grouped = transactions_test %>%
   group_by(ID_CPTE) %>%
   summarise(
     number_transactions = n(), 
-    traveller_ind = ifelse(number_transactions != sum(isLocal),1,0)
+    traveller_ind = ifelse(number_transactions != sum(isLocal),1,0),  
+    trx_type_mode = names(table(TRANSACTION_TYPE_XCD))[which.max(table(TRANSACTION_TYPE_XCD))],
+    trx_cat_mode = names(table(TRANSACTION_CATEGORY_XCD))[which.max(table(TRANSACTION_CATEGORY_XCD))]
   )
 
 ## Observe the number of occurrences of each pairing (modify variables if you want to try some combinations out yourself)
