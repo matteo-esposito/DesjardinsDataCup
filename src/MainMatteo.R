@@ -167,13 +167,38 @@ transactions_train$isLocal = as.numeric(transactions_train$MERCHANT_COUNTRY_XCD 
 transactions_train_grouped <- setNames(data.table(matrix(nrow = uniqueN(transactions_train$ID_CPTE), ncol = 1)), c("ID_CPTE"))
 transactions_train_grouped$ID_CPTE = unique(transactions_train$ID_CPTE)
 
+transactions_train$trx_type_A = as.numeric(transactions_train$TRANSACTION_TYPE_XCD == "A")
+transactions_train$trx_type_B = as.numeric(transactions_train$TRANSACTION_TYPE_XCD == "B")
+transactions_train$trx_type_C = as.numeric(transactions_train$TRANSACTION_TYPE_XCD == "C")
+transactions_train$trx_type_D = as.numeric(transactions_train$TRANSACTION_TYPE_XCD == "D")
+transactions_train$trx_type_E = as.numeric(transactions_train$TRANSACTION_TYPE_XCD == "E")
+transactions_train$trx_type_F = as.numeric(transactions_train$TRANSACTION_TYPE_XCD == "F")
+transactions_train$trx_type_G = as.numeric(transactions_train$TRANSACTION_TYPE_XCD == "G")
+transactions_train$trx_cat_A = as.numeric(transactions_train$TRANSACTION_CATEGORY_XCD == "A")
+transactions_train$trx_cat_B = as.numeric(transactions_train$TRANSACTION_CATEGORY_XCD == "B")
+transactions_train$trx_cat_C = as.numeric(transactions_train$TRANSACTION_CATEGORY_XCD == "C")
+transactions_train$trx_cat_D = as.numeric(transactions_train$TRANSACTION_CATEGORY_XCD == "D")
+transactions_train$trx_cat_E = as.numeric(transactions_train$TRANSACTION_CATEGORY_XCD == "E")
+
 transactions_train_grouped = transactions_train %>%
   group_by(ID_CPTE) %>%
   summarise(
     number_transactions = n(), 
-    traveller_ind = ifelse(number_transactions != sum(isLocal),1,0),
+    traveller_ind = ifelse(number_transactions != sum(isLocal),0,1),
     trx_type_mode = names(table(TRANSACTION_TYPE_XCD))[which.max(table(TRANSACTION_TYPE_XCD))],
-    trx_cat_mode = names(table(TRANSACTION_CATEGORY_XCD))[which.max(table(TRANSACTION_CATEGORY_XCD))]
+    trx_cat_mode = names(table(TRANSACTION_CATEGORY_XCD))[which.max(table(TRANSACTION_CATEGORY_XCD))],
+    trx_type_A_perc = mean(trx_type_A),
+    trx_type_B_perc = mean(trx_type_B),
+    trx_type_C_perc = mean(trx_type_C),
+    trx_type_D_perc = mean(trx_type_D),
+    trx_type_E_perc = mean(trx_type_E),
+    trx_type_F_perc = mean(trx_type_F),
+    trx_type_G_perc = mean(trx_type_G),
+    trx_cat_A_perc = mean(trx_cat_A),
+    trx_cat_B_perc = mean(trx_cat_B),
+    trx_cat_C_perc = mean(trx_cat_C),
+    trx_cat_D_perc = mean(trx_cat_D),
+    trx_cat_E_perc = mean(trx_cat_E)
   )
 
 ## TEST
@@ -182,13 +207,38 @@ transactions_test$isLocal = as.numeric(transactions_test$MERCHANT_COUNTRY_XCD ==
 transactions_test_grouped <- setNames(data.table(matrix(nrow = uniqueN(transactions_test$ID_CPTE), ncol = 1)), c("ID_CPTE"))
 transactions_test_grouped$ID_CPTE = unique(transactions_test$ID_CPTE)
 
+transactions_test$trx_type_A = as.numeric(transactions_test$TRANSACTION_TYPE_XCD == "A")
+transactions_test$trx_type_B = as.numeric(transactions_test$TRANSACTION_TYPE_XCD == "B")
+transactions_test$trx_type_C = as.numeric(transactions_test$TRANSACTION_TYPE_XCD == "C")
+transactions_test$trx_type_D = as.numeric(transactions_test$TRANSACTION_TYPE_XCD == "D")
+transactions_test$trx_type_E = as.numeric(transactions_test$TRANSACTION_TYPE_XCD == "E")
+transactions_test$trx_type_F = as.numeric(transactions_test$TRANSACTION_TYPE_XCD == "F")
+transactions_test$trx_type_G = as.numeric(transactions_test$TRANSACTION_TYPE_XCD == "G")
+transactions_test$trx_cat_A = as.numeric(transactions_test$TRANSACTION_CATEGORY_XCD == "A")
+transactions_test$trx_cat_B = as.numeric(transactions_test$TRANSACTION_CATEGORY_XCD == "B")
+transactions_test$trx_cat_C = as.numeric(transactions_test$TRANSACTION_CATEGORY_XCD == "C")
+transactions_test$trx_cat_D = as.numeric(transactions_test$TRANSACTION_CATEGORY_XCD == "D")
+transactions_test$trx_cat_E = as.numeric(transactions_test$TRANSACTION_CATEGORY_XCD == "E")
+
 transactions_test_grouped = transactions_test %>%
   group_by(ID_CPTE) %>%
   summarise(
     number_transactions = n(), 
-    traveller_ind = ifelse(number_transactions != sum(isLocal),1,0),  
+    traveller_ind = ifelse(number_transactions != sum(isLocal),0,1),
     trx_type_mode = names(table(TRANSACTION_TYPE_XCD))[which.max(table(TRANSACTION_TYPE_XCD))],
-    trx_cat_mode = names(table(TRANSACTION_CATEGORY_XCD))[which.max(table(TRANSACTION_CATEGORY_XCD))]
+    trx_cat_mode = names(table(TRANSACTION_CATEGORY_XCD))[which.max(table(TRANSACTION_CATEGORY_XCD))],
+    trx_type_A_perc = mean(trx_type_A),
+    trx_type_B_perc = mean(trx_type_B),
+    trx_type_C_perc = mean(trx_type_C),
+    trx_type_D_perc = mean(trx_type_D),
+    trx_type_E_perc = mean(trx_type_E),
+    trx_type_F_perc = mean(trx_type_F),
+    trx_type_G_perc = mean(trx_type_G),
+    trx_cat_A_perc = mean(trx_cat_A),
+    trx_cat_B_perc = mean(trx_cat_B),
+    trx_cat_C_perc = mean(trx_cat_C),
+    trx_cat_D_perc = mean(trx_cat_D),
+    trx_cat_E_perc = mean(trx_cat_E)
   )
 
 ## Observe the number of occurrences of each pairing (modify variables if you want to try some combinations out yourself)
