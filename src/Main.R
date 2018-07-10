@@ -303,6 +303,30 @@ test = merge(temp2_test, transactions_test_grouped, by = "ID_CPTE", all.x = TRUE
 rm(temp1_test,temp2_test)
 
 ##====================================
+## Formula
+##====================================
+
+## Wanted predictors
+## Since we're doing classification we don't care THAT much about multicollinearity
+predictors_base <- c("count_num_cmp", "mean_payment", "credit_change", "TotalBalanceOL_perc_max", 
+                     "TotalBalanceOL_perc_mean", "TotalBalanceOL_ind", "SpendingOL_perc_max", 
+                     "SpendingOL_perc_mean", "SpendingOL_ind")
+
+predictors_1 <- c("count_num_cmp", "mean_payment", "credit_change", "TotalBalanceOL_perc_max", 
+                  "TotalBalanceOL_perc_mean", "SpendingOL_perc_max", "SpendingOL_perc_mean")
+
+xgb_vars <-  c("mean_payment", "number_payments", "max_payment", "
+               min_payment", "median_payment", "reversedPayment", "noPayments", "
+               mean_balance", "mean_cash_balance", "max_balance", "max_cash_balance", "
+               max_num_cmp", "count_num_cmp", "credit_change", "TotalBalanceOL_perc_max", "
+               TotalBalanceOL_perc_mean", "TotalBalanceOL_ind", "CB_ind", "
+               CB_limit_perc_max", "CB_limit_perc_mean", "Spending_mean", "
+               SpendingOL_perc_max", "SpendingOL_perc_mean", "SpendingOL_ind")
+
+## Creating formula for models post correlation analysis
+formula <- as.formula(paste("Default ~", paste(colnames(train), collapse = "+")))
+
+##====================================
 ## Data Visualization
 ##====================================
 
@@ -310,33 +334,12 @@ rm(temp1_test,temp2_test)
 
 ## Correlation Plot
 dt_corr <- na.omit(train[,!colnames(train) %in% c("PERIODID_MY", "number_transactions", "traveller_ind",
-                                          "trx_type_mode", "trx_cat_mode")])
+                                                  "trx_type_mode", "trx_cat_mode")])
 
-## Convert all logical to integer
-# for (cn in colnames(dt_corr)){
-#   if (class(dt_corr[[cn]]) == "logical"){
-#     dt_corr[[cn]] <- as.numeric(dt_corr[[cn]])
-#   }
-# }
+dt_corr2 <- na.omit(train[,colnames(train) %in% xgb_vars])
 
 ## Output corrplot
-corrplot(cor(dt_corr), method = "circle", order = "alphabet", type = "lower")
-
-##====================================
-## Formula
-##====================================
-
-## Wanted predictors
-## Since we're doing classification we don't care THAT much about multicollinearity
-predictors_base <- c("count_num_cmp", "mean_payment", "credit_change", "TotalBalanceOL_perc_max", 
-                "TotalBalanceOL_perc_mean", "TotalBalanceOL_ind", "SpendingOL_perc_max", 
-                "SpendingOL_perc_mean", "SpendingOL_ind")
-
-predictors_1 <- c("count_num_cmp", "mean_payment", "credit_change", "TotalBalanceOL_perc_max", 
-                "TotalBalanceOL_perc_mean", "SpendingOL_perc_max", "SpendingOL_perc_mean")
-
-## Creating formula for models post correlation analysis
-formula <- as.formula(paste("Default ~", paste(predictors_1, collapse = "+")))
+corrplot(cor(dt_corr2), method = "circle", order = "alphabet", type = "lower")
 
 #--------------------------------------------------------#
 # 2. Modeling                                            
@@ -357,44 +360,40 @@ model_train = subset(train, split == TRUE)
 model_test = subset(train, split == FALSE)
 
 ##====================================
-## Recursive Partitioning
+## Recursive Partitioning (ROC = 0.681)
 ##====================================
 
 rpart_classifier <- rpart(formula, data = model_train, method = "class",
-                     control = rpart.control(minsplit = 100, maxdepth = 10, cp=0.001))
+                          control = rpart.control(minsplit = 100, maxdepth = 10, cp=0.001))
 
 pred_rpart <- predict(rpart_classifier, model_test, type = "class")
+table(model_test$Default,pred_rpart)
 
-table(pred_rpart,model_test$Default)
-
-##====================================
-## Logistic Regression
-##====================================
-
-logreg_classifier <- glm(Default ~ mean_payment + number_payments + max_payment + 
-                           +                  min_payment + median_payment + reversedPayment + noPayments + 
-                           +                  mean_balance + mean_cash_balance + max_balance + max_cash_balance + 
-                           +                  max_num_cmp + count_num_cmp + credit_change + TotalBalanceOL_perc_max + 
-                           +                  TotalBalanceOL_perc_mean + TotalBalanceOL_ind + CB_ind + 
-                           +                  CB_limit_perc_max + CB_limit_perc_mean + Spending_mean + 
-                           +                  SpendingOL_perc_max + SpendingOL_perc_mean + SpendingOL_ind, family = binomial, data = train)
-
-pred_logreg <- predict(logreg_classifier, newdata = test, type = "response")
-pred_rounded_logreg <- ifelse(pred_logreg >= 0.257,1,0)
-table(pred_rounded_logreg,model_test$Default)
-
-model_test$pred1 = pred_rounded_logreg
-model_test$pred2 = as.numeric(pred_rpart)-1
-
-# For test
-write.csv(test,paste0(getwd(),"/Submissions/Submission9_log.csv"))
+# ROC = 0.681
+roc.curve(model_test$Default,pred_rpart)
 
 ##====================================
-## XGBoost
+## Logistic Regression (ROC = 0.787)
 ##====================================
 
-## Converting the response into a factor for xgboost
-train_for_xgb <- copy(train)
+logreg_classifier <- glm(formula, family = binomial, data = model_train)
+
+pred_logreg <- predict(logreg_classifier, newdata = model_test, type = "response")
+pred_rounded_logreg <- ifelse(pred_logreg >= 0.30,1,0)
+
+## Calculate ROC
+roc.curve(model_test$Default, pred_rounded_logreg)
+
+##====================================
+## XGBoost (ROC = 0.705)
+##====================================
+
+<<<<<<< HEAD
+## Creating formula for models post correlation analysis
+formula <- as.formula(paste("Default ~", paste(xgb_vars, collapse = "+")))
+=======
+  ## Converting the response into a factor for xgboost
+  train_for_xgb <- copy(train)
 train_for_xgb$Default <- ifelse(train_for_xgb$Default == 0, "No", "Yes") # Need to make this a factor for xgb
 
 ## Cross-validation
@@ -410,7 +409,7 @@ xgb.grid <- expand.grid(nrounds = 300, eta = 0.1,
                         subsample = 0.8, objective = "reg:logistic",
                         reg_alpha = c(0.01,0.1,1,10,100),
                         reg_lambda = c(0.01,0.1,1,10,100)
-                        )
+)
 
 ## Modifying formula after seeing the output of the first run.
 predictors_xgb <- c("TotalBalanceOL_perc_max", "TotalBalanceOL_perc_mean", "count_num_cmp", "credit_change")
@@ -430,17 +429,60 @@ xgb_tune <-train(formula_xgb,
 ## Visualize results
 print(xgb_tune)
 plot(xgb_tune)
+>>>>>>> f7597a838a824f7ea90bf95331662551bd577490
+
+## Formatting tables for xgboost
+logi_vars <- c("credit_change", "reversedPayment", "noPayments")
+
+for (cn in logi_vars){
+  model_train[[cn]] <- as.numeric(model_train[[cn]])
+  model_test[[cn]] <- as.numeric(model_test[[cn]])
+}
+
+set.seed(100)
+
+train_label <- as.numeric(as.factor(model_train$Default))-1
+test_label <- as.numeric(as.factor(model_test$Default))-1
+
+train_for_xgb <- as.matrix(copy(model_train[,colnames(model_train) %in% c(xgb_vars,"Default")]))
+test_for_xgb <- as.matrix(copy(model_test[,colnames(model_test) %in% c(xgb_vars,"Default")]))
+
+dtrain <- xgb.DMatrix(data = train_for_xgb,
+                      label = train_label) 
+
+dtest <- xgb.DMatrix(data = test_for_xgb,
+                     label = test_label) 
+
+## Keeping the model under control
+params <- list(booster = "gbtree", objective = "binary:logistic", eta = 0.1, gamma = 0,
+               max_depth = 6, min_child_weight = 50, subsample = 1, colsample_bytree = 0.8)
+
+xgbcv <- xgb.cv(params = params, data = dtrain, nrounds = 300, nfold = 5, showsd = T, stratified = T,
+                print_every_n = 5, early_stopping_rounds = 10) 
+
+xgb1 <- xgb.train(params = params
+                  ,data = dtrain
+                  ,nrounds = 25
+                  ,watchlist = list(val=dtest,train=dtrain)
+                  ,print_every_n = 10
+                  ,early_stopping_round = 10
+                  ,maximize = F
+                  ,eval_metric = "error"
+)
+
+xgbpred <- predict(xgb1,dtest)
+xgbpred <- ifelse(xgbpred > 0.5,1,0)
+confusionMatrix(xgbpred, test_label)
 
 ## Calculate ROC
-roc.curve(predict(xgb_tune, train), train$Default)
+roc.curve(model_test$Default,xgbpred)
+
+## Variable Importance Graph
+mat <- xgb.importance(feature_names = colnames(dtrain),model = xgb1)
+xgb.plot.importance(mat)
 
 ## Final prediction for submission
-test$xgb_pred <- as.numeric(predict(xgb_tune, test))-1
-
-##====================================
-## Support Vector Machines
-##====================================
-
+#test$xgb_pred <- as.numeric(predict(xgb_tune, test))-1
 
 #--------------------------------------------------------#
 # 3. Submission                                          
