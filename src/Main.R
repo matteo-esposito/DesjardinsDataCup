@@ -404,10 +404,13 @@ cv.ctrl <- trainControl(method = "repeatedcv", repeats = 2, number = 3,
                         allowParallel = T)
 
 ## Grid searching
-xgb.grid <- expand.grid(nrounds = 300, eta = c(0.01,0.05,0.1),
-                        max_depth = c(5,7,9), gamma = 0,
-                        colsample_bytree = 0.8, min_child_weight = 100, 
-                        subsample = 0.8)
+xgb.grid <- expand.grid(nrounds = 300, eta = 0.1,
+                        max_depth = 7, gamma = 0,
+                        colsample_bytree = 0.8, min_child_weight = c(5,40), 
+                        subsample = 0.8, objective = "reg:logistic",
+                        reg_alpha = c(0.01,0.1,1,10,100),
+                        reg_lambda = c(0.01,0.1,1,10,100)
+                        )
 
 ## Modifying formula after seeing the output of the first run.
 predictors_xgb <- c("TotalBalanceOL_perc_max", "TotalBalanceOL_perc_mean", "count_num_cmp", "credit_change")
