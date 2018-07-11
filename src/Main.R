@@ -302,6 +302,14 @@ temp2_test = merge(temp1_test,performance_test, by = "ID_CPTE")
 test = merge(temp2_test, transactions_test_grouped, by = "ID_CPTE", all.x = TRUE)
 rm(temp1_test,temp2_test)
 
+
+logi_vars <- c("credit_change", "reversedPayment", "noPayments")
+
+for (cn in logi_vars){
+  train[[cn]] <- as.numeric(train[[cn]])
+  test[[cn]] <- as.numeric(test[[cn]])
+}
+
 ##====================================
 ## Formula
 ##====================================
@@ -373,8 +381,16 @@ table(model_test$Default,pred_rpart)
 roc.curve(model_test$Default,pred_rpart)
 
 ##====================================
-## Logistic Regression (ROC = 0.787)
+## Logistic Regression (ROC = 0.798)
 ##====================================
+logi_vars <- c("credit_change", "reversedPayment", "noPayments")
+
+for (cn in logi_vars){
+  model_train[[cn]] <- as.numeric(model_train[[cn]])
+  model_test[[cn]] <- as.numeric(model_test[[cn]])
+}
+
+formula_logreg <- as.formula(paste("Default ~", paste(revised_vars,collapse = "+")))
 
 logreg_classifier <- glm(formula, family = binomial, data = model_train)
 
@@ -388,50 +404,54 @@ roc.curve(model_test$Default, pred_rounded_logreg)
 ## XGBoost (ROC = 0.705)
 ##====================================
 
-<<<<<<< HEAD
-## Creating formula for models post correlation analysis
-formula <- as.formula(paste("Default ~", paste(xgb_vars, collapse = "+")))
-=======
-  ## Converting the response into a factor for xgboost
-  train_for_xgb <- copy(train)
-train_for_xgb$Default <- ifelse(train_for_xgb$Default == 0, "No", "Yes") # Need to make this a factor for xgb
-
-## Cross-validation
-cv.ctrl <- trainControl(method = "repeatedcv", repeats = 2, number = 3, 
-                        #summaryFunction = twoClassSummary,
-                        classProbs = TRUE,
-                        allowParallel = T)
-
-## Grid searching
-xgb.grid <- expand.grid(nrounds = 300, eta = 0.1,
-                        max_depth = 7, gamma = 0,
-                        colsample_bytree = 0.8, min_child_weight = c(5,40), 
-                        subsample = 0.8, objective = "reg:logistic",
-                        reg_alpha = c(0.01,0.1,1,10,100),
-                        reg_lambda = c(0.01,0.1,1,10,100)
-)
-
-## Modifying formula after seeing the output of the first run.
-predictors_xgb <- c("TotalBalanceOL_perc_max", "TotalBalanceOL_perc_mean", "count_num_cmp", "credit_change")
-formula_xgb <- as.formula(paste0("Default ~", paste(predictors_xgb, collapse = "+")))
-
-## Run the model
-xgb_tune <-train(formula_xgb,
-                 data=train_for_xgb,
-                 method="xgbTree",
-                 trControl=cv.ctrl,
-                 tuneGrid=xgb.grid,
-                 #na.action = "na.pass",
-                 verbose = T,
-                 metric="merror",
-                 nthread = 3)
-
-## Visualize results
-print(xgb_tune)
-plot(xgb_tune)
->>>>>>> f7597a838a824f7ea90bf95331662551bd577490
+## OLD XGB
+# 
+# ## Creating formula for models post correlation analysis
+# formula <- as.formula(paste("Default ~", paste(xgb_vars, collapse = "+")))
+# 
+#   ## Converting the response into a factor for xgboost
+#   train_for_xgb <- copy(train)
+# train_for_xgb$Default <- ifelse(train_for_xgb$Default == 0, "No", "Yes") # Need to make this a factor for xgb
+# 
+# ## Cross-validation
+# cv.ctrl <- trainControl(method = "repeatedcv", repeats = 2, number = 3, 
+#                         #summaryFunction = twoClassSummary,
+#                         classProbs = TRUE,
+#                         allowParallel = T)
+# 
+# ## Grid searching
+# xgb.grid <- expand.grid(nrounds = 300, eta = 0.1,
+#                         max_depth = 7, gamma = 0,
+#                         colsample_bytree = 0.8, min_child_weight = c(5,40), 
+#                         subsample = 0.8, objective = "reg:logistic",
+#                         reg_alpha = c(0.01,0.1,1,10,100),
+#                         reg_lambda = c(0.01,0.1,1,10,100)
+# )
+# 
+# ## Modifying formula after seeing the output of the first run.
+# predictors_xgb <- c("TotalBalanceOL_perc_max", "TotalBalanceOL_perc_mean", "count_num_cmp", "credit_change")
+# formula_xgb <- as.formula(paste0("Default ~", paste(predictors_xgb, collapse = "+")))
+# 
+# ## Run the model
+# xgb_tune <-train(formula_xgb,
+#                  data=train_for_xgb,
+#                  method="xgbTree",
+#                  trControl=cv.ctrl,
+#                  tuneGrid=xgb.grid,
+#                  #na.action = "na.pass",
+#                  verbose = T,
+#                  metric="merror",
+#                  nthread = 3)
+# 
+# ## Visualize results
+# print(xgb_tune)
+# plot(xgb_tune)
 
 ## Formatting tables for xgboost
+revised_vars <- c("TotalBalanceOL_perc_max", "count_num_cmp", "CB_limit_perc_mean",
+                  "median_payment", "number_payments", "max_balance", "max_cash_balance",
+                  "credit_change")
+
 logi_vars <- c("credit_change", "reversedPayment", "noPayments")
 
 for (cn in logi_vars){
@@ -444,8 +464,8 @@ set.seed(100)
 train_label <- as.numeric(as.factor(model_train$Default))-1
 test_label <- as.numeric(as.factor(model_test$Default))-1
 
-train_for_xgb <- as.matrix(copy(model_train[,colnames(model_train) %in% c(xgb_vars,"Default")]))
-test_for_xgb <- as.matrix(copy(model_test[,colnames(model_test) %in% c(xgb_vars,"Default")]))
+train_for_xgb <- as.matrix(copy(model_train[,colnames(model_train) %in% c(revised_vars,"Default")]))
+test_for_xgb <- as.matrix(copy(model_test[,colnames(model_test) %in% c(revised_vars,"Default")]))
 
 dtrain <- xgb.DMatrix(data = train_for_xgb,
                       label = train_label) 
@@ -492,13 +512,20 @@ xgb.plot.importance(mat)
 #--------------------------------------------------------#
 
 final_pred <- predict(logreg_classifier, newdata = test, type = "response")
-final_pred_rounded <- ifelse(final_pred >= 0.5,1,0)
+final_pred_rounded <- ifelse(final_pred >= 0.3,1,0)
 
-submission <- data.frame(test$ID_CPTE, test$xgb_pred)
+test$logreg_pred <- final_pred_rounded
+test$final_pred <- final_pred
+
+submission <- data.frame(test$ID_CPTE, test$final_pred)
 colnames(submission) = c("ID_CPTE", "Default")
 
-write.csv(submission,paste0(getwd(),"/Submissions/Submission6.csv"))
+#submission_final = merge(submission,performance_test, by = "ID_CPTE")
 
+write.csv(submission,paste0(getwd(),"/Submissions/submission_3_JUL10_probs.csv"))
+
+## Command for excel - lol
+# =VLOOKUP(E2,$B$2:$C$5101,2,$C$2:$C$5101)
 
 
 
