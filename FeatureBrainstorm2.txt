@@ -1,0 +1,41 @@
+**Above all else, check the patterns in the people that we are predicting to be very likely to default
+
+Payment reversal, inspect N's and blanks
+currenttotalbalance at the end of the periods are 0 (not using his card anymore)
+
+features % of paid (near 100%, under x%) - find out minimum credit card payment percentage
+
+how many creditlimit increases
+trend in currenttotalbalance (-1,+1) - generate score from [-12,12]
+trend in cashbalance (-1,+1) - generate score from [-12,12]
+trend in cashbalance (-1,+1) - generate score from [-12,12]
+
+trend in percent paidback (min = 2%?)
+
+#months < 3% paidback
+
+payback <- paiements_train/facturation_train
+
+A = preauthorization
+check prior credit limit patterns with transaction amounts
+
+number of trx/month trend in avg trx amount/mth
+
+add to traveller_ind > traveller couples i.e. 2+ payments of exactly the same amount
+		 
+frequency and severity of merchant_category amounts
+
+currenttotalbalance change vs credit limit change vs. avg currenttotalbalance change
+
+check defaulters and very good payments to validate meanings from features^
+
+> 0.90 of credit limit etc...
+
+low credit limits = usually unreliable customers (+ delq)
+
+given >=1 pmt find avg number of payments
+
+greater weight on more recent transactions
+
+trend of last few months (14 total usually, find 12 month, 6 month, 3 month).... could be someone who is bouncing back
+
