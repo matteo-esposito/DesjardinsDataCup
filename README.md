@@ -1,9 +1,9 @@
 # Desjardins Data Cup
 https://datacup.ca/
 
-> As of July 11
-> 1st place AUC = ```0.913118044```
-> Best AUC = ```0.892385802```
+> 1st place AUC = ```0.913118044``` (as of July 11)
+
+> Our best AUC = ```0.892385802```
 
 ### Bootstrap & Bonding
 *June 26 - July 5*
