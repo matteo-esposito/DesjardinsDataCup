@@ -406,7 +406,7 @@ final_pred <- predict(logreg_classifier, newdata = test, type = "response")
 final_pred_rounded <- ifelse(final_pred >= 0.3,1,0)
 
 ##====================================
-## XGBoost (ROC = 0.705)
+## XGBoost (ROC = 0.885)
 ##====================================
 
 ## OLD XGB
