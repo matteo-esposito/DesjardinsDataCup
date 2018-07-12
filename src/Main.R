@@ -17,6 +17,8 @@
 
 ## WD
 setwd("~/Github/DesjardinsDataCup/")
+#setwd("~/Desktop/DesjardinsDataCup/")
+
 
 ## Package loading
 packages <- c("data.table", "rpart", "caret", "gbm", "mgcv", "ggplot2", "dplyr", 
@@ -76,27 +78,32 @@ sum(is.na(payments_train$TRANSACTION_AMT))
 
 ## TRAIN
 ## Perc/Ind multicollinearity??
-billing_train$TotalBalanceOL_perc = billing_train$CurrentTotalBalance/billing_train$CreditLimit
-billing_train$TotalBalanceOL_ind = as.numeric(billing_train$CurrentTotalBalance > billing_train$CreditLimit)
 
-billing_train$CB_limit_perc = billing_train$CashBalance/billing_train$CreditLimit
-billing_train$CB_limit_ind = as.numeric(billing_train$CashBalance > billing_train$CreditLimit)
-billing_train$CB_ind = as.numeric(billing_train$CashBalance > 0)
+#combining train and test so only need to do data prep once
 
-billing_train$Spending = billing_train$CurrentTotalBalance - billing_train$CashBalance
-billing_train$SpendingOL_perc = billing_train$Spending/billing_train$CreditLimit
-billing_train$SpendingOL_ind = as.numeric(billing_train$Spending > billing_train$CreditLimit)
+billing_full = rbind(billing_train,billing_test)
+
+billing_full$TotalBalanceOL_perc = billing_full$CurrentTotalBalance/billing_full$CreditLimit
+billing_full$TotalBalanceOL_ind = as.numeric(billing_full$CurrentTotalBalance > billing_full$CreditLimit)
+
+billing_full$CB_limit_perc = billing_full$CashBalance/billing_full$CreditLimit
+billing_full$CB_limit_ind = as.numeric(billing_full$CashBalance > billing_full$CreditLimit)
+billing_full$CB_ind = as.numeric(billing_full$CashBalance > 0)
+
+billing_full$Spending = billing_full$CurrentTotalBalance - billing_full$CashBalance
+billing_full$SpendingOL_perc = billing_full$Spending/billing_full$CreditLimit
+billing_full$SpendingOL_ind = as.numeric(billing_full$Spending > billing_full$CreditLimit)
 
 # CMP = Consecutive missing payments
-billing_train$Num_CMP = billing_train$DelqCycle
+billing_full$Num_CMP = billing_full$DelqCycle
 
 ## New table to store summaritive variables (useful for modeling in the future)
-billing_train_grouped <- setNames(data.table(matrix(nrow = uniqueN(billing_train$ID_CPTE), ncol = 1)), c("ID_CPTE"))
-billing_train_grouped$ID_CPTE = unique(billing_train$ID_CPTE)
+billing_full_grouped <- setNames(data.table(matrix(nrow = uniqueN(billing_full$ID_CPTE), ncol = 1)), c("ID_CPTE"))
+billing_full_grouped$ID_CPTE = unique(billing_full$ID_CPTE)
 
-billing_train$DelqCycle_ind <- ifelse(billing_train$DelqCycle != 0, 1, 0)
+billing_full$DelqCycle_ind <- ifelse(billing_full$DelqCycle != 0, 1, 0)
 
-billing_train_grouped = billing_train %>%
+billing_full_grouped = billing_full %>%
   group_by(ID_CPTE) %>%
   summarise(
     mean_balance = mean(CurrentTotalBalance),
@@ -118,73 +125,43 @@ billing_train_grouped = billing_train %>%
     SpendingOL_ind = max(SpendingOL_ind)
   )
 
-## TEST
-billing_test$TotalBalanceOL_perc = billing_test$CurrentTotalBalance/billing_test$CreditLimit
-billing_test$TotalBalanceOL_ind = as.numeric(billing_test$CurrentTotalBalance > billing_test$CreditLimit)
+#split train and test
 
-billing_test$CB_limit_perc = billing_test$CashBalance/billing_test$CreditLimit
-billing_test$CB_limit_ind = as.numeric(billing_test$CashBalance > billing_test$CreditLimit)
-billing_test$CB_ind = as.numeric(billing_test$CashBalance > 0 )
+billing_train = billing_full[billing_full$ID_CPTE %in% performance_train$ID_CPTE,]
+billing_train_grouped = billing_full_grouped[billing_full_grouped$ID_CPTE %in% performance_train$ID_CPTE,]
 
-billing_test$Spending = billing_test$CurrentTotalBalance - billing_test$CashBalance
-billing_test$SpendingOL_perc = billing_test$Spending/billing_test$CreditLimit
-billing_test$SpendingOL_ind = as.numeric(billing_test$Spending > billing_test$CreditLimit)
+billing_test = billing_full[billing_full$ID_CPTE %in% performance_test$ID_CPTE,]
+billing_test_grouped = billing_full_grouped[billing_full_grouped$ID_CPTE %in% performance_test$ID_CPTE,]
 
-# CMP = Consecutive missing payments
-billing_test$Num_CMP = billing_test$DelqCycle
 
-## New table to store summaritive variables (useful for modeling in the future)
-billing_test_grouped <- setNames(data.table(matrix(nrow = uniqueN(billing_test$ID_CPTE), ncol = 1)), c("ID_CPTE"))
-billing_test_grouped$ID_CPTE = unique(billing_test$ID_CPTE)
-
-billing_test$DelqCycle_ind <- ifelse(billing_test$DelqCycle != 0, 1, 0)
-
-billing_test_grouped = billing_test %>%
-  group_by(ID_CPTE) %>%
-  summarise(
-    mean_balance = mean(CurrentTotalBalance),
-    mean_cash_balance = mean(CashBalance),
-    max_balance = max(CurrentTotalBalance),
-    max_cash_balance = max(CashBalance),
-    max_num_cmp = max(DelqCycle),
-    count_num_cmp = sum(DelqCycle_ind),
-    credit_change = (max(CreditLimit) != min(CreditLimit)),
-    TotalBalanceOL_perc_max = max(TotalBalanceOL_perc),
-    TotalBalanceOL_perc_mean = mean(TotalBalanceOL_perc),
-    TotalBalanceOL_ind = max(TotalBalanceOL_ind),
-    CB_ind = max(CB_ind),
-    CB_limit_perc_max = max(CB_limit_perc),
-    CB_limit_perc_mean = mean(CB_limit_perc),
-    Spending_mean = mean(Spending),
-    SpendingOL_perc_max = max(SpendingOL_perc),
-    SpendingOL_perc_mean = mean(SpendingOL_perc),
-    SpendingOL_ind = max(SpendingOL_ind)
-  )
 
 ##====================================
 ## Transaction features
 ##====================================
 
-## TRAIN
-transactions_train$isLocal = as.numeric(transactions_train$MERCHANT_COUNTRY_XCD == "DP")
+## COMBINING TRAIN AND TEST
 
-transactions_train_grouped <- setNames(data.table(matrix(nrow = uniqueN(transactions_train$ID_CPTE), ncol = 1)), c("ID_CPTE"))
-transactions_train_grouped$ID_CPTE = unique(transactions_train$ID_CPTE)
+transactions_full = rbind(transactions_train,transactions_test)
 
-transactions_train$trx_type_A = as.numeric(transactions_train$TRANSACTION_TYPE_XCD == "A")
-transactions_train$trx_type_B = as.numeric(transactions_train$TRANSACTION_TYPE_XCD == "B")
-transactions_train$trx_type_C = as.numeric(transactions_train$TRANSACTION_TYPE_XCD == "C")
-transactions_train$trx_type_D = as.numeric(transactions_train$TRANSACTION_TYPE_XCD == "D")
-transactions_train$trx_type_E = as.numeric(transactions_train$TRANSACTION_TYPE_XCD == "E")
-transactions_train$trx_type_F = as.numeric(transactions_train$TRANSACTION_TYPE_XCD == "F")
-transactions_train$trx_type_G = as.numeric(transactions_train$TRANSACTION_TYPE_XCD == "G")
-transactions_train$trx_cat_A = as.numeric(transactions_train$TRANSACTION_CATEGORY_XCD == "A")
-transactions_train$trx_cat_B = as.numeric(transactions_train$TRANSACTION_CATEGORY_XCD == "B")
-transactions_train$trx_cat_C = as.numeric(transactions_train$TRANSACTION_CATEGORY_XCD == "C")
-transactions_train$trx_cat_D = as.numeric(transactions_train$TRANSACTION_CATEGORY_XCD == "D")
-transactions_train$trx_cat_E = as.numeric(transactions_train$TRANSACTION_CATEGORY_XCD == "E")
+transactions_full$isLocal = as.numeric(transactions_full$MERCHANT_COUNTRY_XCD == "DP")
 
-transactions_train_grouped = transactions_train %>%
+transactions_full_grouped <- setNames(data.table(matrix(nrow = uniqueN(transactions_full$ID_CPTE), ncol = 1)), c("ID_CPTE"))
+transactions_full_grouped$ID_CPTE = unique(transactions_full$ID_CPTE)
+
+transactions_full$trx_type_A = as.numeric(transactions_full$TRANSACTION_TYPE_XCD == "A")
+transactions_full$trx_type_B = as.numeric(transactions_full$TRANSACTION_TYPE_XCD == "B")
+transactions_full$trx_type_C = as.numeric(transactions_full$TRANSACTION_TYPE_XCD == "C")
+transactions_full$trx_type_D = as.numeric(transactions_full$TRANSACTION_TYPE_XCD == "D")
+transactions_full$trx_type_E = as.numeric(transactions_full$TRANSACTION_TYPE_XCD == "E")
+transactions_full$trx_type_F = as.numeric(transactions_full$TRANSACTION_TYPE_XCD == "F")
+transactions_full$trx_type_G = as.numeric(transactions_full$TRANSACTION_TYPE_XCD == "G")
+transactions_full$trx_cat_A = as.numeric(transactions_full$TRANSACTION_CATEGORY_XCD == "A")
+transactions_full$trx_cat_B = as.numeric(transactions_full$TRANSACTION_CATEGORY_XCD == "B")
+transactions_full$trx_cat_C = as.numeric(transactions_full$TRANSACTION_CATEGORY_XCD == "C")
+transactions_full$trx_cat_D = as.numeric(transactions_full$TRANSACTION_CATEGORY_XCD == "D")
+transactions_full$trx_cat_E = as.numeric(transactions_full$TRANSACTION_CATEGORY_XCD == "E")
+
+transactions_full_grouped = transactions_full %>%
   group_by(ID_CPTE) %>%
   summarise(
     number_transactions = n(), 
@@ -205,45 +182,15 @@ transactions_train_grouped = transactions_train %>%
     trx_cat_E_perc = mean(trx_cat_E)
   )
 
-## TEST
-transactions_test$isLocal = as.numeric(transactions_test$MERCHANT_COUNTRY_XCD == "DP")
+#split train and test
 
-transactions_test_grouped <- setNames(data.table(matrix(nrow = uniqueN(transactions_test$ID_CPTE), ncol = 1)), c("ID_CPTE"))
-transactions_test_grouped$ID_CPTE = unique(transactions_test$ID_CPTE)
+transactions_train = transactions_full[transactions_full$ID_CPTE %in% performance_train$ID_CPTE,]
+transactions_train_grouped = transactions_full_grouped[transactions_full_grouped$ID_CPTE %in% performance_train$ID_CPTE,]
 
-transactions_test$trx_type_A = as.numeric(transactions_test$TRANSACTION_TYPE_XCD == "A")
-transactions_test$trx_type_B = as.numeric(transactions_test$TRANSACTION_TYPE_XCD == "B")
-transactions_test$trx_type_C = as.numeric(transactions_test$TRANSACTION_TYPE_XCD == "C")
-transactions_test$trx_type_D = as.numeric(transactions_test$TRANSACTION_TYPE_XCD == "D")
-transactions_test$trx_type_E = as.numeric(transactions_test$TRANSACTION_TYPE_XCD == "E")
-transactions_test$trx_type_F = as.numeric(transactions_test$TRANSACTION_TYPE_XCD == "F")
-transactions_test$trx_type_G = as.numeric(transactions_test$TRANSACTION_TYPE_XCD == "G")
-transactions_test$trx_cat_A = as.numeric(transactions_test$TRANSACTION_CATEGORY_XCD == "A")
-transactions_test$trx_cat_B = as.numeric(transactions_test$TRANSACTION_CATEGORY_XCD == "B")
-transactions_test$trx_cat_C = as.numeric(transactions_test$TRANSACTION_CATEGORY_XCD == "C")
-transactions_test$trx_cat_D = as.numeric(transactions_test$TRANSACTION_CATEGORY_XCD == "D")
-transactions_test$trx_cat_E = as.numeric(transactions_test$TRANSACTION_CATEGORY_XCD == "E")
+transactions_test = transactions_full[transactions_full$ID_CPTE %in% performance_test$ID_CPTE,]
+transactions_test_grouped = transactions_full_grouped[transactions_full_grouped$ID_CPTE %in% performance_test$ID_CPTE,]
 
-transactions_test_grouped = transactions_test %>%
-  group_by(ID_CPTE) %>%
-  summarise(
-    number_transactions = n(), 
-    traveller_ind = ifelse(number_transactions != sum(isLocal),0,1),
-    trx_type_mode = names(table(TRANSACTION_TYPE_XCD))[which.max(table(TRANSACTION_TYPE_XCD))],
-    trx_cat_mode = names(table(TRANSACTION_CATEGORY_XCD))[which.max(table(TRANSACTION_CATEGORY_XCD))],
-    trx_type_A_perc = mean(trx_type_A),
-    trx_type_B_perc = mean(trx_type_B),
-    trx_type_C_perc = mean(trx_type_C),
-    trx_type_D_perc = mean(trx_type_D),
-    trx_type_E_perc = mean(trx_type_E),
-    trx_type_F_perc = mean(trx_type_F),
-    trx_type_G_perc = mean(trx_type_G),
-    trx_cat_A_perc = mean(trx_cat_A),
-    trx_cat_B_perc = mean(trx_cat_B),
-    trx_cat_C_perc = mean(trx_cat_C),
-    trx_cat_D_perc = mean(trx_cat_D),
-    trx_cat_E_perc = mean(trx_cat_E)
-  )
+
 
 ## Observe the number of occurrences of each pairing (modify variables if you want to try some combinations out yourself)
 ## NOTE: Might need to re-run this section...
