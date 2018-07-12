@@ -302,7 +302,6 @@ temp2_test = merge(temp1_test,performance_test, by = "ID_CPTE")
 test = merge(temp2_test, transactions_test_grouped, by = "ID_CPTE", all.x = TRUE)
 rm(temp1_test,temp2_test)
 
-
 logi_vars <- c("credit_change", "reversedPayment", "noPayments")
 
 for (cn in logi_vars){
@@ -345,9 +344,10 @@ dt_corr <- na.omit(train[,!colnames(train) %in% c("PERIODID_MY", "number_transac
                                                   "trx_type_mode", "trx_cat_mode")])
 
 dt_corr2 <- na.omit(train[,colnames(train) %in% xgb_vars])
+dt_corr3 <- na.omit(train[,colnames(train) %in% revised_vars])
 
 ## Output corrplot
-corrplot(cor(dt_corr2), method = "circle", order = "alphabet", type = "lower")
+corrplot(cor(dt_corr3), method = "circle", order = "alphabet", type = "lower")
 
 #--------------------------------------------------------#
 # 2. Modeling                                            
@@ -399,6 +399,11 @@ pred_rounded_logreg <- ifelse(pred_logreg >= 0.30,1,0)
 
 ## Calculate ROC
 roc.curve(model_test$Default, pred_rounded_logreg)
+
+## Final prediction for submission
+
+final_pred <- predict(logreg_classifier, newdata = test, type = "response")
+final_pred_rounded <- ifelse(final_pred >= 0.3,1,0)
 
 ##====================================
 ## XGBoost (ROC = 0.705)
@@ -467,32 +472,85 @@ test_label <- as.numeric(as.factor(model_test$Default))-1
 train_for_xgb <- as.matrix(copy(model_train[,colnames(model_train) %in% c(revised_vars,"Default")]))
 test_for_xgb <- as.matrix(copy(model_test[,colnames(model_test) %in% c(revised_vars,"Default")]))
 
+
 dtrain <- xgb.DMatrix(data = train_for_xgb,
                       label = train_label) 
 
 dtest <- xgb.DMatrix(data = test_for_xgb,
                      label = test_label) 
 
-## Keeping the model under control
-params <- list(booster = "gbtree", objective = "binary:logistic", eta = 0.1, gamma = 0,
-               max_depth = 6, min_child_weight = 50, subsample = 1, colsample_bytree = 0.8)
+## Grid search
 
-xgbcv <- xgb.cv(params = params, data = dtrain, nrounds = 300, nfold = 5, showsd = T, stratified = T,
-                print_every_n = 5, early_stopping_rounds = 10) 
+## READ-ME ********
+## 
+## When the output csv is written, re-visit the console and check to see which iteration for each version (V1,V2,..,VN)
+## is the best. What is written in the first 2 rows of the output csv are the train and test auc.
+## 
+## Below each training and testing auc are the combination of hyperparameters used to get those metrics.
+## Good luck :P
+
+searchGridSubCol <- expand.grid(subsample = 0.8, 
+                                colsample_bytree = c(0.8),
+                                max_depth = 3,
+                                min_child = C(1,20,50), 
+                                eta = 0.1,
+                                gamma = 1
+)
+
+cv_function <- function(parameterList){
+  
+  #Extract Parameters to test
+  currentSubsampleRate <- parameterList[["subsample"]]
+  currentColsampleRate <- parameterList[["colsample_bytree"]]
+  currentDepth <- parameterList[["max_depth"]]
+  currentEta <- parameterList[["eta"]]
+  currentMinChild <- parameterList[["min_child"]]
+  currentGamma <- parameterList[["gamma"]]
+  
+  xgboostModelCV <- xgb.cv(data =  dtrain, nrounds = 300, nfold = 10, showsd = TRUE, 
+                           metrics = "auc", verbose = TRUE, "eval_metric" = "auc", "gamma" = currentGamma, 
+                           "objective" = "binary:logistic", "max.depth" = currentDepth, "eta" = currentEta,                               
+                           "subsample" = currentSubsampleRate, "colsample_bytree" = currentColsampleRate
+                           , print_every_n = 5, "min_child_weight" = currentMinChild, booster = "gbtree",
+                           early_stopping_rounds = 10)
+  
+  #print(xgboostModelCV$evaluation_log)
+  xvalidationScores <- as.data.frame(xgboostModelCV$evaluation_log)
+  auc <- tail(xvalidationScores$train_auc_mean, 1)
+  tauc <- tail(xvalidationScores$test_auc_mean,1)
+  output <- return(c(auc, tauc, currentSubsampleRate, currentColsampleRate, currentDepth, currentEta, currentMinChild, currentGamma))
+}
+
+system.time(
+  aucErrorsHyperparameters <- apply(searchGridSubCol, 1, cv_function)
+)
+
+output <- as.data.frame((aucErrorsHyperparameters))
+output
+write.csv(output,paste0(getwd(), "/xgb_gridsearch.csv"))
+
+## Keeping the model under control
+params <- list(booster = "gbtree", objective = "binary:logistic", eta = 0.1, gamma = 5,
+               max_depth = 3, min_child_weight = 1, subsample = 0.8, colsample_bytree = 0.8)
+
+# xgbcv <- xgb.cv(params = params, data = dtrain, nrounds = 300, nfold = 10, showsd = T, stratified = T,
+#                 print_every_n = 5, early_stopping_rounds = 10) 
+
+## Model with optimal parameters
 
 xgb1 <- xgb.train(params = params
                   ,data = dtrain
-                  ,nrounds = 25
+                  ,nrounds = 200
                   ,watchlist = list(val=dtest,train=dtrain)
-                  ,print_every_n = 10
-                  ,early_stopping_round = 10
-                  ,maximize = F
-                  ,eval_metric = "error"
+                  ,print_every_n = 2
+                  ,early_stopping_round = 5
+                  #,maximize = F
+                  ,eval_metric = "auc"
 )
 
 xgbpred <- predict(xgb1,dtest)
-xgbpred <- ifelse(xgbpred > 0.5,1,0)
-confusionMatrix(xgbpred, test_label)
+# xgbpred <- ifelse(xgbpred > 0.5,1,0)
+# confusionMatrix(xgbpred, test_label)
 
 ## Calculate ROC
 roc.curve(model_test$Default,xgbpred)
@@ -502,7 +560,13 @@ mat <- xgb.importance(feature_names = colnames(dtrain),model = xgb1)
 xgb.plot.importance(mat)
 
 ## Final prediction for submission
-#test$xgb_pred <- as.numeric(predict(xgb_tune, test))-1
+test_final_label <- as.numeric(as.factor(test$Default))-1
+test_final_xgb <- as.matrix(copy(test[,colnames(test) %in% c(revised_vars,"Default")]))
+dtest_final <- xgb.DMatrix(data = test_final_xgb,
+                           label = test_final_label) 
+
+
+xgb_submission <- predict(xgb1,dtest_final) 
 
 #--------------------------------------------------------#
 # 3. Submission                                          
@@ -511,18 +575,14 @@ xgb.plot.importance(mat)
 #   - Create submission .csv
 #--------------------------------------------------------#
 
-final_pred <- predict(logreg_classifier, newdata = test, type = "response")
-final_pred_rounded <- ifelse(final_pred >= 0.3,1,0)
-
-test$logreg_pred <- final_pred_rounded
-test$final_pred <- final_pred
+test$final_pred <- xgb_submission
 
 submission <- data.frame(test$ID_CPTE, test$final_pred)
 colnames(submission) = c("ID_CPTE", "Default")
 
 #submission_final = merge(submission,performance_test, by = "ID_CPTE")
 
-write.csv(submission,paste0(getwd(),"/Submissions/submission_3_JUL10_probs.csv"))
+write.csv(submission,paste0(getwd(),"/Submissions/submission_2_JUL11_probs.csv"))
 
 ## Command for excel - lol
 # =VLOOKUP(E2,$B$2:$C$5101,2,$C$2:$C$5101)
