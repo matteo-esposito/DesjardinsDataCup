@@ -1,11 +1,7 @@
 
 # Desjardins Lab DataCup
 # June/July 2018
-# Matteo Esposito, Haiqi Liang, Fred Siino, Tony Yuan (alphabetical bros)
-
-# TODO
-#   - what category does the person spend the most on?
-#   - knn for transaction features 
+# Matteo Esposito, Haiqi Liang, Fred Siino, Tony Yuan
 
 #--------------------------------------------------------#
 # 0. Preliminary                                         #
@@ -17,12 +13,11 @@
 
 ## WD
 setwd("~/Github/DesjardinsDataCup/")
-#setwd("~/Desktop/DesjardinsDataCup/")
-
 
 ## Package loading
-packages <- c("data.table", "rpart", "caret", "gbm", "mgcv", "ggplot2", "dplyr", 
-              "Hmisc", "xgboost", "corrplot", "e1071", "plotly", "ROSE")
+packages <- c("data.table", "rpart", "caret", "gbm", "mgcv", "ggplot2", "dplyr", #"tcltk", "RH2",
+              "Hmisc", "xgboost", "corrplot", "e1071", "plotly", "ROSE", "sqldf", "rJava")
+#sapply(packages, install.packages, character.only = T)
 sapply(packages, require, character.only = T)
 
 ## Load data
@@ -34,6 +29,9 @@ performance_train <- fread(paste0(getwd(),"/Data/performance_train.csv")) # DEFA
 performance_test <- fread(paste0(getwd(),"/Data/performance_test.csv"))
 transactions_train <- fread(paste0(getwd(),"/Data/transactions_train.csv")) # DAILY CREDIT CARD PURCHASES
 transactions_test <- fread(paste0(getwd(),"/Data/transactions_test.csv"))
+joined_table_train <- fread(paste0(getwd(),"/joined_table_sql_test.csv"))
+transactions_add_train <- read.csv(paste0(getwd(),"/Data/additional_transactions_train.csv")) # ++DAILY CREDIT CARD PURCHASES
+transactions_add_test <- read.csv(paste0(getwd(),"/Data/additional_transactions_test.csv"))
 
 sampSol <- fread(paste0(getwd(),"/Data/sample_solution.csv"))
 
@@ -194,10 +192,19 @@ transactions_test_grouped = transactions_full_grouped[transactions_full_grouped$
 
 ## Observe the number of occurrences of each pairing (modify variables if you want to try some combinations out yourself)
 ## NOTE: Might need to re-run this section...
-dt_inspection <- transactions_train[,.SD,.SDcols=c("ID_CPTE","TRANSACTION_CATEGORY_XCD", "TRANSACTION_TYPE_XCD")]
+dt_inspection <- transactions_train[,.SD,.SDcols=c("ID_CPTE","TRANSACTION_CATEGORY_XCD", "TRANSACTION_TYPE_XCD", "TRANSACTION_AMT")]
+
+dt_inspection %>%
+  group_by(ID_CPTE) %>%
+  summarise(
+    mean_trx_by_cat <- mean(TRANSACTION_AMT)
+  )
+
+dt_inspection <- transactions_train[,.SD,.SDcols=c("ID_CPTE","TRANSACTION_CATEGORY_XCD", "TRANSACTION_TYPE_XCD", "TRANSACTION_AMT", "mean_trx_by_cat")]
+
 dt_pair_count <- merge(dt_inspection, train, by = "ID_CPTE", all.x = TRUE)
 dt_pair_count$pair_count <- 1
-aggregate(pair_count ~ TRANSACTION_CATEGORY_XCD+TRANSACTION_TYPE_XCD+Default,dt_pair_count, FUN = sum)
+aggregate(pair_count ~ TRANSACTION_CATEGORY_XCD+TRANSACTION_TYPE_XCD+Default+mean_trx_by_cat,dt_pair_count, FUN = sum)
 
 ##====================================
 ## Payment features
@@ -255,6 +262,27 @@ for (cn in logi_vars){
   train[[cn]] <- as.numeric(train[[cn]])
   test[[cn]] <- as.numeric(test[[cn]])
 }
+
+## ===================
+## SQL join
+## ===================
+
+## Creating lag variable
+billing_train$lag_PERIODID_MY <- Lag(billing_train$PERIODID_MY)
+
+# Sort by vector name [z] then [x]
+billing_train <- billing_train[
+  with(billing_train, order(ID_CPTE, PERIODID_MY)),
+  ]
+
+billing_train_forjoin <- as.data.frame(billing_train[-1])
+
+join_pmts <- "SELECT billing_train_forjoin.*,
+payments_train.TRANSACTION_AMT
+FROM billing_train_forjoin a LEFT JOIN payments_train b
+WHERE a.ID_CPTE = b.ID_CPTE AND b.TRANSACTION_DTTM >= a.lag_PERIODID_MY AND "
+
+billing_join_payments <- sqldf(join_pmts, stringsAsFactors=FALSE)
 
 ##====================================
 ## Formula
@@ -357,49 +385,6 @@ pred_logreg_test <- predict(logreg_classifier, newdata = test, type = "response"
 ##====================================
 ## XGBoost (ROC = 0.885)
 ##====================================
-
-## OLD XGB
-# 
-# ## Creating formula for models post correlation analysis
-# formula <- as.formula(paste("Default ~", paste(xgb_vars, collapse = "+")))
-# 
-#   ## Converting the response into a factor for xgboost
-#   train_for_xgb <- copy(train)
-# train_for_xgb$Default <- ifelse(train_for_xgb$Default == 0, "No", "Yes") # Need to make this a factor for xgb
-# 
-# ## Cross-validation
-# cv.ctrl <- trainControl(method = "repeatedcv", repeats = 2, number = 3, 
-#                         #summaryFunction = twoClassSummary,
-#                         classProbs = TRUE,
-#                         allowParallel = T)
-# 
-# ## Grid searching
-# xgb.grid <- expand.grid(nrounds = 300, eta = 0.1,
-#                         max_depth = 7, gamma = 0,
-#                         colsample_bytree = 0.8, min_child_weight = c(5,40), 
-#                         subsample = 0.8, objective = "reg:logistic",
-#                         reg_alpha = c(0.01,0.1,1,10,100),
-#                         reg_lambda = c(0.01,0.1,1,10,100)
-# )
-# 
-# ## Modifying formula after seeing the output of the first run.
-# predictors_xgb <- c("TotalBalanceOL_perc_max", "TotalBalanceOL_perc_mean", "count_num_cmp", "credit_change")
-# formula_xgb <- as.formula(paste0("Default ~", paste(predictors_xgb, collapse = "+")))
-# 
-# ## Run the model
-# xgb_tune <-train(formula_xgb,
-#                  data=train_for_xgb,
-#                  method="xgbTree",
-#                  trControl=cv.ctrl,
-#                  tuneGrid=xgb.grid,
-#                  #na.action = "na.pass",
-#                  verbose = T,
-#                  metric="merror",
-#                  nthread = 3)
-# 
-# ## Visualize results
-# print(xgb_tune)
-# plot(xgb_tune)
 
 ## Formatting tables for xgboost
 revised_vars <- c("TotalBalanceOL_perc_max", "count_num_cmp", "CB_limit_perc_mean",
