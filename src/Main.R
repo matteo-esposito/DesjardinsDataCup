@@ -26,16 +26,16 @@ packages <- c("data.table", "rpart", "caret", "gbm", "mgcv", "ggplot2", "dplyr",
 sapply(packages, require, character.only = T)
 
 ## Load data
-billing_train <- as.data.table(read.csv(paste0(getwd(),"/Data/facturation_train.csv"))) # SUMMARY/eSTATEMENT OF WHAT YOU OWE ON CREDIT CARD by MONTH
-billing_test <- as.data.table(read.csv(paste0(getwd(),"/Data/facturation_test.csv"))) 
-payments_train <- as.data.table(read.csv(paste0(getwd(),"/Data/paiements_train.csv"))) # PAYING OFF CREDIT CARD
-payments_test <- as.data.table(read.csv(paste0(getwd(),"/Data/paiements_test.csv"))) 
-performance_train <- as.data.table(read.csv(paste0(getwd(),"/Data/performance_train.csv"))) # DEFAULT/NOT DEFAULT
-performance_test <- as.data.table(read.csv(paste0(getwd(),"/Data/performance_test.csv"))) 
-transactions_train <- as.data.table(read.csv(paste0(getwd(),"/Data/transactions_train.csv"))) # DAILY CREDIT CARD PURCHASES
-transactions_test <- as.data.table(read.csv(paste0(getwd(),"/Data/transactions_test.csv")))
+billing_train <- fread(paste0(getwd(),"/Data/facturation_train.csv")) # SUMMARY/eSTATEMENT OF WHAT YOU OWE ON CREDIT CARD by MONTH
+billing_test <- fread(paste0(getwd(),"/Data/facturation_test.csv")) 
+payments_train <- fread(paste0(getwd(),"/Data/paiements_train.csv")) # PAYING OFF CREDIT CARD
+payments_test <- fread(paste0(getwd(),"/Data/paiements_test.csv")) 
+performance_train <- fread(paste0(getwd(),"/Data/performance_train.csv")) # DEFAULT/NOT DEFAULT
+performance_test <- fread(paste0(getwd(),"/Data/performance_test.csv"))
+transactions_train <- fread(paste0(getwd(),"/Data/transactions_train.csv")) # DAILY CREDIT CARD PURCHASES
+transactions_test <- fread(paste0(getwd(),"/Data/transactions_test.csv"))
 
-sampSol <- as.data.table(read.csv(paste0(getwd(),"/Data/sample_solution.csv")))
+sampSol <- fread(paste0(getwd(),"/Data/sample_solution.csv"))
 
 #--------------------------------------------------------#
 # 1. Preprocessing                                       
@@ -277,8 +277,12 @@ xgb_vars <-  c("mean_payment", "number_payments", "max_payment", "
                CB_limit_perc_max", "CB_limit_perc_mean", "Spending_mean", "
                SpendingOL_perc_max", "SpendingOL_perc_mean", "SpendingOL_ind")
 
+revised_vars <- c("TotalBalanceOL_perc_max", "count_num_cmp", "CB_limit_perc_mean",
+                  "median_payment", "number_payments", "max_balance", "max_cash_balance",
+                  "credit_change","pred_logreg")
+
 ## Creating formula for models post correlation analysis
-formula <- as.formula(paste("Default ~", paste(colnames(train), collapse = "+")))
+formula <- as.formula(paste("Default ~", paste(revised_vars, collapse = "+")))
 
 ##====================================
 ## Data Visualization
@@ -342,15 +346,13 @@ formula_logreg <- as.formula(paste("Default ~", paste(revised_vars,collapse = "+
 logreg_classifier <- glm(formula, family = binomial, data = model_train)
 
 pred_logreg <- predict(logreg_classifier, newdata = model_test, type = "response")
-pred_rounded_logreg <- ifelse(pred_logreg >= 0.30,1,0)
 
 ## Calculate ROC
-roc.curve(model_test$Default, pred_rounded_logreg)
+roc.curve(model_test$Default, pred_logreg)
 
 ## Final prediction for submission
 
-final_pred <- predict(logreg_classifier, newdata = test, type = "response")
-final_pred_rounded <- ifelse(final_pred >= 0.3,1,0)
+pred_logreg_test <- predict(logreg_classifier, newdata = test, type = "response")
 
 ##====================================
 ## XGBoost (ROC = 0.885)
@@ -402,7 +404,7 @@ final_pred_rounded <- ifelse(final_pred >= 0.3,1,0)
 ## Formatting tables for xgboost
 revised_vars <- c("TotalBalanceOL_perc_max", "count_num_cmp", "CB_limit_perc_mean",
                   "median_payment", "number_payments", "max_balance", "max_cash_balance",
-                  "credit_change")
+                  "credit_change","pred_logreg_test")
 
 logi_vars <- c("credit_change", "reversedPayment", "noPayments")
 
@@ -439,9 +441,9 @@ dtest <- xgb.DMatrix(data = test_for_xgb,
 searchGridSubCol <- expand.grid(subsample = 0.8, 
                                 colsample_bytree = c(0.8),
                                 max_depth = 3,
-                                min_child = C(1,20,50), 
-                                eta = 0.1,
-                                gamma = 1
+                                min_child = c(1,20,50), 
+                                eta = c(0.05,0.1,0.2),
+                                gamma = c(0,1,5)
 )
 
 cv_function <- function(parameterList){
@@ -454,7 +456,7 @@ cv_function <- function(parameterList){
   currentMinChild <- parameterList[["min_child"]]
   currentGamma <- parameterList[["gamma"]]
   
-  xgboostModelCV <- xgb.cv(data =  dtrain, nrounds = 300, nfold = 10, showsd = TRUE, 
+  xgboostModelCV <- xgb.cv(data =  dtrain, nrounds = 500, nfold = 3, showsd = TRUE, 
                            metrics = "auc", verbose = TRUE, "eval_metric" = "auc", "gamma" = currentGamma, 
                            "objective" = "binary:logistic", "max.depth" = currentDepth, "eta" = currentEta,                               
                            "subsample" = currentSubsampleRate, "colsample_bytree" = currentColsampleRate
@@ -487,7 +489,7 @@ params <- list(booster = "gbtree", objective = "binary:logistic", eta = 0.1, gam
 
 xgb1 <- xgb.train(params = params
                   ,data = dtrain
-                  ,nrounds = 200
+                  ,nrounds = 500
                   ,watchlist = list(val=dtest,train=dtrain)
                   ,print_every_n = 2
                   ,early_stopping_round = 5
@@ -529,7 +531,7 @@ colnames(submission) = c("ID_CPTE", "Default")
 
 #submission_final = merge(submission,performance_test, by = "ID_CPTE")
 
-write.csv(submission,paste0(getwd(),"/Submissions/submission_2_JUL11_probs.csv"))
+write.csv(submission,paste0(getwd(),"/Submissions/submission_1_JUL12.csv"))
 
 ## Command for excel - lol
 # =VLOOKUP(E2,$B$2:$C$5101,2,$C$2:$C$5101)
