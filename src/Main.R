@@ -501,6 +501,345 @@ dtest_final <- xgb.DMatrix(data = test_final_xgb,
 
 
 xgb_submission <- predict(xgb1,dtest_final) 
+         
+ ##====================================
+## Out Of Sample Prediction + Measure
+##====================================
+         
+ OutSamplePred = function(data = train, folds = 10, FUN , caretUsed = TRUE) {
+  cv.ctrl <- trainControl(method = "none",  
+                          #summaryFunction = twoClassSummary,
+                          classProbs = TRUE,
+                          allowParallel = T)
+  flds <- createFolds(data$ID_CPTE, k = folds, list = TRUE, returnTrain = FALSE)
+  responseType = ""
+  if(caretUsed) {
+    responseType = "prob"
+  } else {
+    responseType = "response"
+  }
+
+  
+  modelVector = vector("list",length = folds)
+  predictionVector = vector("list",length = folds)
+  
+  for ( i in 1:folds) {
+  testFolds = data[flds[[i]],]
+  trainFolds = data[-flds[[i]],]
+
+
+
+  ## Run the model
+  modelVector[[i]] <- FUN(trainFolds)
+
+
+
+  predictionVector[[i]] = data.frame(testFolds$ID_CPTE,
+                                     predict(modelVector[[i]], newdata = testFolds, type = responseType),
+                                     testFolds$Default)
+
+  }
+
+
+  df = rbind(predictionVector[[1]], predictionVector[[2]] )
+  for ( i in 3:folds) {
+    df = rbind(df,predictionVector[[i]])
+  }
+  return(df)
+}
+
+level1ModelList = list("svmRadial", "gam", "xgboost", "var1xgboost","var2xgboost", "ranger", "mann", "knn2", "knn4", "knn8", "knn16", "nb")
+level1DataList =  vector("list",length = length(level1ModelList))
+
+
+svmRadialFunction = function(data = trainFolds) {
+  cv.ctrl <- trainControl(method = "none",  
+                          #summaryFunction = twoClassSummary,
+                          classProbs = TRUE,
+                          allowParallel = T)
+  svm.grid = expand.grid(sigma = 0.05,C=1)
+  
+  
+  return(
+    train(Default ~ mean_payment + number_payments + max_payment + min_payment + 
+            median_payment + reversedPayment + noPayments + mean_balance + 
+            mean_cash_balance + max_balance + max_cash_balance + max_num_cmp + 
+            count_num_cmp + credit_change + TotalBalanceOL_perc_max + 
+            TotalBalanceOL_perc_mean + TotalBalanceOL_ind + CB_ind + 
+            CB_limit_perc_max + CB_limit_perc_mean + Spending_mean + 
+            SpendingOL_perc_max + SpendingOL_perc_mean + SpendingOL_ind,
+          data = data,
+          method="svmRadial",
+          trControl = cv.ctrl,
+          tuneGrid = svm.grid,
+          #na.action = "na.pass",
+          verbose = T,
+          nthread = 3)
+  )
+}
+gamFunction = function(data = trainFolds) {
+  return(
+    gam(Default ~ s(mean_payment,7) + s(number_payments,4) + max_payment+ min_payment*median_payment +
+               reversedPayment + noPayments + mean_balance*max_balance + 
+               mean_cash_balance+  max_num_cmp + 
+               count_num_cmp + credit_change + s(TotalBalanceOL_perc_max,4)*s(TotalBalanceOL_perc_mean,3) + 
+               TotalBalanceOL_ind + CB_ind + 
+               CB_limit_perc_max*CB_limit_perc_mean  + 
+               SpendingOL_perc_max*SpendingOL_ind,
+             family = binomial, data = data)
+         )
+}
+xgboostFunction = function(data = trainFolds) {
+  cv.ctrl <- trainControl(method = "none",  
+                          #summaryFunction = twoClassSummary,
+                          classProbs = TRUE,
+                          allowParallel = T)
+  xgb.grid <- expand.grid(nrounds = 300, eta = 0.05,
+                          max_depth = 9, gamma = 0.1,
+                          colsample_bytree = 0.8, min_child_weight = 100, 
+                          subsample = 0.8)
+  return(
+    train(Default ~ mean_payment + number_payments + max_payment + min_payment + 
+            median_payment + reversedPayment + noPayments + mean_balance + 
+            mean_cash_balance + max_balance + max_cash_balance + max_num_cmp + 
+            count_num_cmp + credit_change + TotalBalanceOL_perc_max + 
+            TotalBalanceOL_perc_mean + TotalBalanceOL_ind + CB_ind + 
+            CB_limit_perc_max + CB_limit_perc_mean + Spending_mean + 
+            SpendingOL_perc_max + SpendingOL_perc_mean + SpendingOL_ind,
+          data = data,
+          method="xgbTree",
+          trControl = cv.ctrl,
+          tuneGrid = xgb.grid,
+          #na.action = "na.pass",
+          verbose = T,
+          nthread = 3)
+  )
+}
+var1xgboostFunction = function(data = trainFolds) {
+  cv.ctrl <- trainControl(method = "none",  
+                          #summaryFunction = twoClassSummary,
+                          classProbs = TRUE,
+                          allowParallel = T)
+  var1xgb.grid <- expand.grid(nrounds = 100, eta = 0.3,
+                          max_depth = 2, gamma = 0,
+                          colsample_bytree = 0.8, min_child_weight = 1, 
+                          subsample = 0.5)
+  return(
+    train(Default ~ max_num_cmp + 
+            count_num_cmp + credit_change + TotalBalanceOL_perc_max + 
+            TotalBalanceOL_perc_mean + TotalBalanceOL_ind + CB_ind + 
+            CB_limit_perc_max + CB_limit_perc_mean + Spending_mean + 
+            SpendingOL_perc_max + SpendingOL_perc_mean + SpendingOL_ind,
+          data = data,
+          method="xgbTree",
+          trControl = cv.ctrl,
+          tuneGrid = var1xgb.grid,
+          #na.action = "na.pass",
+          verbose = T,
+          nthread = 3)
+  )
+}
+var2xgboostFunction = function(data = trainFolds) {
+  cv.ctrl <- trainControl(method = "none",  
+                          #summaryFunction = twoClassSummary,
+                          classProbs = TRUE,
+                          allowParallel = T)
+  var2xgb.grid <- expand.grid(nrounds = 100, eta = 0.3,
+                          max_depth = 3, gamma = 0,
+                          colsample_bytree = 0.8, min_child_weight = 1, 
+                          subsample = 0.5)
+  return(
+    train(Default ~ mean_payment + number_payments + max_payment + min_payment + 
+            median_payment + reversedPayment + noPayments + mean_balance + 
+            mean_cash_balance + max_balance + max_cash_balance,
+          data = data,
+          method="xgbTree",
+          trControl = cv.ctrl,
+          tuneGrid = var2xgb.grid,
+          #na.action = "na.pass",
+          verbose = T,
+          nthread = 3)
+  )
+}
+rangerFunction = function(data = trainFolds) {
+  cv.ctrl <- trainControl(method = "none",  
+                          #summaryFunction = twoClassSummary,
+                          classProbs = TRUE,
+                          allowParallel = T)
+  ranger.grid = expand.grid(mtry =2, splitrule ="gini", min.node.size = 2)
+  return(
+    train(Default ~ mean_payment + number_payments + max_payment + min_payment + 
+            median_payment + reversedPayment + noPayments + mean_balance + 
+            mean_cash_balance + max_balance + max_cash_balance + max_num_cmp + 
+            count_num_cmp + credit_change + TotalBalanceOL_perc_max + 
+            TotalBalanceOL_perc_mean + TotalBalanceOL_ind + CB_ind + 
+            CB_limit_perc_max + CB_limit_perc_mean + Spending_mean + 
+            SpendingOL_perc_max + SpendingOL_perc_mean + SpendingOL_ind,
+          data = data,
+          method="ranger",
+          trControl = cv.ctrl,
+          tuneGrid = ranger.grid,
+          #na.action = "na.pass",
+          verbose = T)
+  )
+}
+mannFunction = function(data = trainFolds) {
+  cv.ctrl <- trainControl(method = "none",  
+                          #summaryFunction = twoClassSummary,
+                          classProbs = TRUE,
+                          allowParallel = T)
+  
+  mann.grid <- expand.grid(size = 2, decay = 0.33, bag = TRUE)
+  
+  
+  train(Default ~ mean_payment + number_payments  + reversedPayment + noPayments + mean_balance + 
+          mean_cash_balance  +  max_num_cmp + 
+          count_num_cmp + credit_change  + 
+          TotalBalanceOL_ind + TotalBalanceOL_perc_max + CB_ind + 
+          CB_limit_perc_mean + Spending_mean +  
+          SpendingOL_perc_max + SpendingOL_ind,
+        data=data,
+        method="avNNet",
+        trControl = cv.ctrl,
+        tuneGrid = mann.grid,
+        #na.action = "na.pass",
+        verbose = T,
+        nthread = 3)
+}
+knn2Function = function(data = trainFolds) {
+  cv.ctrl <- trainControl(method = "none",  
+                          #summaryFunction = twoClassSummary,
+                          classProbs = TRUE,
+                          allowParallel = T)
+  knn.grid <- expand.grid(k = 2)
+  
+  return(train(Default ~ mean_payment + number_payments + max_payment + min_payment + 
+                     median_payment + reversedPayment + noPayments + mean_balance + 
+                     mean_cash_balance + max_balance + max_cash_balance + max_num_cmp + 
+                     count_num_cmp + credit_change + TotalBalanceOL_perc_max + 
+                     TotalBalanceOL_perc_mean + TotalBalanceOL_ind + CB_ind + 
+                     CB_limit_perc_max + CB_limit_perc_mean + Spending_mean + 
+                     SpendingOL_perc_max + SpendingOL_perc_mean + SpendingOL_ind,
+                    data=data,
+                    method="knn",
+                    trControl = cv.ctrl,
+                    tuneGrid = knn.grid
+                    )
+  )
+}
+knn4Function = function(data = trainFolds) {
+  cv.ctrl <- trainControl(method = "none",  
+                          #summaryFunction = twoClassSummary,
+                          classProbs = TRUE,
+                          allowParallel = T)
+  knn.grid <- expand.grid(k = 4)
+  
+  return(train(Default ~ mean_payment + number_payments + max_payment + min_payment + 
+                 median_payment + reversedPayment + noPayments + mean_balance + 
+                 mean_cash_balance + max_balance + max_cash_balance + max_num_cmp + 
+                 count_num_cmp + credit_change + TotalBalanceOL_perc_max + 
+                 TotalBalanceOL_perc_mean + TotalBalanceOL_ind + CB_ind + 
+                 CB_limit_perc_max + CB_limit_perc_mean + Spending_mean + 
+                 SpendingOL_perc_max + SpendingOL_perc_mean + SpendingOL_ind,
+               data=data,
+               method="knn",
+               trControl = cv.ctrl,
+               tuneGrid = knn.grid
+  )
+  )
+}
+knn8Function = function(data = trainFolds) {
+  cv.ctrl <- trainControl(method = "none",  
+                          #summaryFunction = twoClassSummary,
+                          classProbs = TRUE,
+                          allowParallel = T)
+  knn.grid <- expand.grid(k = 8)
+  
+  return(train(Default ~ mean_payment + number_payments + max_payment + min_payment + 
+                 median_payment + reversedPayment + noPayments + mean_balance + 
+                 mean_cash_balance + max_balance + max_cash_balance + max_num_cmp + 
+                 count_num_cmp + credit_change + TotalBalanceOL_perc_max + 
+                 TotalBalanceOL_perc_mean + TotalBalanceOL_ind + CB_ind + 
+                 CB_limit_perc_max + CB_limit_perc_mean + Spending_mean + 
+                 SpendingOL_perc_max + SpendingOL_perc_mean + SpendingOL_ind,
+               data=data,
+               method="knn",
+               trControl = cv.ctrl,
+               tuneGrid = knn.grid
+  )
+  )
+}
+knn16Function = function(data = trainFolds) {
+  cv.ctrl <- trainControl(method = "none",  
+                          #summaryFunction = twoClassSummary,
+                          classProbs = TRUE,
+                          allowParallel = T)
+  knn.grid <- expand.grid(k = 16)
+  
+  return(train(Default ~ mean_payment + number_payments + max_payment + min_payment + 
+                 median_payment + reversedPayment + noPayments + mean_balance + 
+                 mean_cash_balance + max_balance + max_cash_balance + max_num_cmp + 
+                 count_num_cmp + credit_change + TotalBalanceOL_perc_max + 
+                 TotalBalanceOL_perc_mean + TotalBalanceOL_ind + CB_ind + 
+                 CB_limit_perc_max + CB_limit_perc_mean + Spending_mean + 
+                 SpendingOL_perc_max + SpendingOL_perc_mean + SpendingOL_ind,
+               data=data,
+               method="knn",
+               trControl = cv.ctrl,
+               tuneGrid = knn.grid
+  )
+  )
+}
+nbFunction = function(data = trainFolds) {
+  cv.ctrl <- trainControl(method = "none",  
+                          #summaryFunction = twoClassSummary,
+                          classProbs = TRUE,
+                          allowParallel = T)
+  nb.grid = expand.grid(laplace= 0, adjust = 0, usekernel = TRUE)
+
+  nb.tune <-train(Default ~ mean_payment + number_payments + max_payment + min_payment + 
+                    median_payment + reversedPayment + noPayments + mean_balance + 
+                    mean_cash_balance + max_balance + max_cash_balance + max_num_cmp + 
+                    count_num_cmp + credit_change + TotalBalanceOL_perc_max + 
+                    TotalBalanceOL_perc_mean + TotalBalanceOL_ind + CB_ind + 
+                    CB_limit_perc_max + CB_limit_perc_mean + Spending_mean + 
+                    SpendingOL_perc_max + SpendingOL_perc_mean + SpendingOL_ind,
+                  data=train_Cat,
+                  method="naive_bayes",
+                  trControl = cv.ctrl,
+                  tuneGrid = nb.grid,
+                  #na.action = "na.pass",
+                  verbose = T,
+                  nthread = 3)
+  
+}
+
+svmRadialtest = OutSamplePred(data = train_Cat, folds = 10, FUN = svmRadialFunction,caretUsed = TRUE)
+gamtest = OutSamplePred(data = train, folds = 10, FUN =gamFunction, caretUsed = FALSE)
+xgboosttest = OutSamplePred(data = train_Cat, folds = 10, FUN = xgboostFunction,caretUsed = TRUE)
+var1xgboosttest = OutSamplePred(data = train_Cat, folds = 10, FUN = var1xgboostFunction,caretUsed = TRUE)
+var2xgboosttest = OutSamplePred(data = train_Cat, folds = 10, FUN = var2xgboostFunction,caretUsed = TRUE)
+rangertest = OutSamplePred(data = train_Cat, folds = 10, FUN = rangerFunction,caretUsed = TRUE)
+manntest = OutSamplePred(data = train_Cat, folds = 10, FUN = mannFunction,caretUsed = TRUE)
+knn2test = OutSamplePred(data = train_Cat, folds = 10, FUN = knn2Function,caretUsed = TRUE)
+knn4test = OutSamplePred(data = train_Cat, folds = 10, FUN = knn4Function,caretUsed = TRUE)
+knn8test = OutSamplePred(data = train_Cat, folds = 10, FUN = knn8Function,caretUsed = TRUE)
+knn16test = OutSamplePred(data = train_Cat, folds = 10, FUN = knn16Function,caretUsed = TRUE)
+nbtest = OutSamplePred(data = train_Cat, folds = 10, FUN = nbFunction,caretUsed = TRUE)
+
+colnames(svmRadialtest) = c("ID_CPTE","drop", "svmRadial", "Default") 
+colnames(gamtest) = c("ID_CPTE", "gam", "Default")
+colnames(xgboosttest) = c("ID_CPTE","drop", "xgboost", "Default")
+colnames(var1xgboosttest) = c("ID_CPTE","drop", "var1xgboost", "Default")
+colnames(var2xgboosttest) = c("ID_CPTE","drop", "var2xgboost", "Default")
+colnames(rangertest) =c("ID_CPTE","drop", "ranger", "Default")
+colnames(manntest) = c("ID_CPTE","drop", "mann", "Default")
+colnames(knn2test) = c("ID_CPTE","drop", "knn2", "Default")
+colnames(knn4test) = c("ID_CPTE","drop", "knn4", "Default")
+colnames(knn8test) = c("ID_CPTE","drop", "knn8", "Default")
+colnames(knn16test) = c("ID_CPTE","drop", "knn16", "Default")
+colnames(nbtest) = c("ID_CPTE","drop", "nb", "Default")
+
 
 #--------------------------------------------------------#
 # 3. Submission                                          
