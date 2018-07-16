@@ -16,7 +16,8 @@ setwd("~/Github/DesjardinsDataCup/")
 
 ## Package loading
 packages <- c("data.table", "rpart", "caret", "gbm", "mgcv", "ggplot2", "dplyr", #"tcltk", "RH2",
-              "Hmisc", "xgboost", "corrplot", "e1071", "plotly", "ROSE", "sqldf", "rJava")
+              "Hmisc", "xgboost", "corrplot", "e1071", "plotly", "ROSE", "sqldf", "rJava","ranger",
+              "gam", "kernlab","kknn", "naivebayes")
 #sapply(packages, install.packages, character.only = T)
 sapply(packages, require, character.only = T)
 
@@ -139,7 +140,7 @@ billing_test_grouped = billing_full_grouped[billing_full_grouped$ID_CPTE %in% pe
 
 ## COMBINING TRAIN AND TEST
 
-transactions_full = rbind(transactions_train,transactions_test)
+transactions_full = rbind(transactions_train,transactions_test,transactions_add_train,transactions_add_test)
 
 transactions_full$isLocal = as.numeric(transactions_full$MERCHANT_COUNTRY_XCD == "DP")
 
@@ -158,12 +159,14 @@ transactions_full$trx_cat_B = as.numeric(transactions_full$TRANSACTION_CATEGORY_
 transactions_full$trx_cat_C = as.numeric(transactions_full$TRANSACTION_CATEGORY_XCD == "C")
 transactions_full$trx_cat_D = as.numeric(transactions_full$TRANSACTION_CATEGORY_XCD == "D")
 transactions_full$trx_cat_E = as.numeric(transactions_full$TRANSACTION_CATEGORY_XCD == "E")
-
+transactions_full$trxpctused = ifelse(transactions_full$PRIOR_CREDIT_LIMIT_AMT == 0 ,0,transactions_full$TRANSACTION_AMT/transactions_full$PRIOR_CREDIT_LIMIT_AMT)
 transactions_full_grouped = transactions_full %>%
   group_by(ID_CPTE) %>%
   summarise(
     number_transactions = n(), 
     traveller_ind = ifelse(number_transactions != sum(isLocal),0,1),
+    mean_trx_amt = mean(TRANSACTION_AMT),
+    mean_trx_pct = mean(trxpctused),
     trx_type_mode = names(table(TRANSACTION_TYPE_XCD))[which.max(table(TRANSACTION_TYPE_XCD))],
     trx_cat_mode = names(table(TRANSACTION_CATEGORY_XCD))[which.max(table(TRANSACTION_CATEGORY_XCD))],
     trx_type_A_perc = mean(trx_type_A),
@@ -188,9 +191,9 @@ transactions_train_grouped = transactions_full_grouped[transactions_full_grouped
 transactions_test = transactions_full[transactions_full$ID_CPTE %in% performance_test$ID_CPTE,]
 transactions_test_grouped = transactions_full_grouped[transactions_full_grouped$ID_CPTE %in% performance_test$ID_CPTE,]
 
-
-
 ## Observe the number of occurrences of each pairing (modify variables if you want to try some combinations out yourself)
+
+
 ## NOTE: Might need to re-run this section...
 dt_inspection <- transactions_train[,.SD,.SDcols=c("ID_CPTE","TRANSACTION_CATEGORY_XCD", "TRANSACTION_TYPE_XCD", "TRANSACTION_AMT")]
 
@@ -264,6 +267,34 @@ for (cn in logi_vars){
 }
 
 ## ===================
+## Fixing NAs in train and test
+
+for ( i in 1:nrow(train)) {
+  if(is.na(train[i,"mean_trx_amt"])) {
+    train[i,"mean_trx_amt"] = mean(transactions_full_grouped$mean_trx_amt)
+  }
+  if(is.na(train[i,"mean_trx_pct"])) {
+    train[i,"mean_trx_pct"] = mean(transactions_full_grouped$mean_trx_pct)
+  }
+  if(is.na(train[i,"number_transactions"])) {
+    train[i,"number_transactions"] = mean(transactions_full_grouped$number_transactions)
+  }
+}
+
+for ( i in 1:nrow(test)) {
+  if(is.na(test[i,"mean_trx_amt"])) {
+    train[i,"mean_trx_amt"] = mean(transactions_full_grouped$mean_trx_amt)
+  }
+  if(is.na(test[i,"mean_trx_pct"])) {
+    test[i,"mean_trx_pct"] = mean(transactions_full_grouped$mean_trx_pct)
+  }
+  if(is.na(test[i,"number_transactions"])) {
+    test[i,"number_transactions"] = mean(transactions_full_grouped$number_transactions)
+  }
+}
+
+
+## ===================
 ## SQL join
 ## ===================
 
@@ -283,6 +314,16 @@ FROM billing_train_forjoin a LEFT JOIN payments_train b
 WHERE a.ID_CPTE = b.ID_CPTE AND b.TRANSACTION_DTTM >= a.lag_PERIODID_MY AND "
 
 billing_join_payments <- sqldf(join_pmts, stringsAsFactors=FALSE)
+
+## ===================
+## Changing to categorical Response for certain Models
+## ===================
+
+
+train_Cat <- copy(train)
+train_Cat$Default <- ifelse(train_Cat$Default == 0, "No", "Yes") # Need to make this a factor for xgb
+test_Cat <- copy(test)
+test_Cat$Default <- ifelse(test_Cat$Default == 0, "No", "Yes") # Need to make this a factor for xgb
 
 ##====================================
 ## Formula
@@ -332,7 +373,7 @@ corrplot(cor(dt_corr3), method = "circle", order = "alphabet", type = "lower")
 # 2. Modeling                                            
 # ______________________________________________________ 
 #                    
-#   - Splitting data for modeling
+#   - Finding Parameters for Different level 1 models
 #   - Decision trees/rpart
 #   - Logistic Regression (GLM)                          
 #   - XGBoost
@@ -345,6 +386,46 @@ set.seed(8)
 split = sample.split(train$Default, SplitRatio = 0.70)
 model_train = subset(train, split == TRUE)
 model_test = subset(train, split == FALSE)
+
+##====================================
+## Optimal Model Parameters
+##====================================
+
+cv.ctrl <- trainControl(method = "repeatedcv", repeats = 1, number = 4, 
+                        summaryFunction = twoClassSummary,
+                        classProbs = TRUE,
+                        allowParallel = T)
+##====================================
+## XGBoost Model Parameters
+##====================================
+
+train$Default = as.factor(train$Default)
+
+xgb.grid <- expand.grid(nrounds = c(100,300,500), eta = c(0,0),
+                        max_depth = c(5,7,9), gamma = c(0,0.1),
+                        colsample_bytree = 0.8, min_child_weight = c(1,50,100), 
+                        subsample = 0.8)
+
+xgb.grid <- expand.grid(nrounds = c(100,300), eta = c(0),
+                        max_depth = c(1,5,9), gamma = c(0,0.1),
+                        colsample_bytree = 0.8, min_child_weight = c(1,10,100), 
+                        subsample = 0.8)
+
+xgb.tune =train(Default ~ mean_payment + number_payments + max_payment + min_payment + 
+          median_payment + reversedPayment + noPayments + mean_balance + 
+          mean_cash_balance + max_balance + max_cash_balance + max_num_cmp + 
+          count_num_cmp + credit_change + TotalBalanceOL_perc_max + 
+          TotalBalanceOL_perc_mean + TotalBalanceOL_ind + CB_ind + 
+          CB_limit_perc_max + CB_limit_perc_mean + Spending_mean + 
+          SpendingOL_perc_max + SpendingOL_perc_mean + SpendingOL_ind +
+          mean_trx_amt + mean_trx_pct + number_transactions,
+        data = train_Cat,
+        method="xgbTree",
+        trControl = cv.ctrl,
+        tuneGrid = xgb.grid,
+        metric = "ROC")
+
+
 
 ##====================================
 ## Recursive Partitioning (ROC = 0.681)
