@@ -1,7 +1,7 @@
 # Desjardins Data Cup
 https://datacup.ca/
 
-> 1st place AUC = ```0.913155107``` (as of July 13)
+> 1st place AUC = ```0.92018123``` (Final based on 30% of test)
 
 > Our best AUC = ```0.894123548```
 
