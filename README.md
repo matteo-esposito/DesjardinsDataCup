@@ -1,9 +1,9 @@
 # Desjardins Data Cup
 https://datacup.ca/
 
-> 1st place AUC = ```0.92018123``` (Final based on 30% of test)
+> 1st place AUC = ```0.92018123``` (Final score based on 70% of validation set)
 
-> Our best AUC = ```0.894123548``` (29/150+)
+> Our best AUC = ```0.89412355``` (29/150+)
 
 ### Bootstrap & Bonding
 *June 26 - July 5*
