@@ -1,7 +1,7 @@
 
 ![alt text](https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRLPO156Ura0OV1TLWKGfP3JaofGCQhFY6YZ7zUmrdnaxjJxw4Zlw)
 
-Desjardins Data Cup
+### Desjardins Data Cup
 https://datacup.ca/
 
 > 1st place AUC = ```0.92018123``` (Final score based on 70% of validation set)
